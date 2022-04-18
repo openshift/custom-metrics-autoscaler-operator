@@ -33,6 +33,115 @@ const (
 // KedaControllerSpec defines the desired state of KedaController
 // +kubebuilder:subresource:status
 type KedaControllerSpec struct {
+
+	// +optional
+	WatchNamespace string `json:"watchNamespace,omitempty"`
+
+	// +optional
+	Operator KedaOperatorSpec `json:"operator"`
+
+	// +optional
+	MetricsServer KedaMetricsServerSpec `json:"metricsServer"`
+
+	// +optional
+	ServiceAccount KedaServiceAccountSpec `json:"serviceAccount"`
+
+	// DEPRECATED fields - use `.spec.operator` or `spec.metricsServer` instead
+	KedaControllerDeprecatedSpec `json:",inline"`
+
+	// Important: Run "make" to regenerate code after modifying this file
+}
+
+type KedaServiceAccountSpec struct {
+
+	// Annotations applied to the Service Account
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// Labels applied to the Service Account
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+type KedaOperatorSpec struct {
+
+	// Logging level for KEDA Controller
+	// allowed values: 'debug', 'info', 'error', or an integer value greater than 0, specified as string
+	// default value: info
+	// +optional
+	LogLevel string `json:"logLevel,omitempty"`
+
+	// Logging format for KEDA Controller
+	// allowed values are json and console
+	// default value: console
+	// +optional
+	LogEncoder string `json:"logEncoder,omitempty"`
+
+	GenericDeploymentSpec `json:",inline"`
+}
+
+type KedaMetricsServerSpec struct {
+
+	// Logging level for Metrics Server
+	// allowed values: "0" for info, "4" for debug, or an integer value greater than 0, specified as string
+	// default value: "0"
+	// +optional
+	LogLevel string `json:"logLevel,omitempty"`
+
+	GenericDeploymentSpec `json:",inline"`
+}
+
+type GenericDeploymentSpec struct {
+
+	// Annotations applied to the Deployment
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+	// +optional
+	DeploymentAnnotations map[string]string `json:"deploymentAnnotations,omitempty"`
+
+	// Labels applied to the Deployment
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+	// +optional
+	DeploymentLabels map[string]string `json:"deploymentLabels,omitempty"`
+
+	// Annotations applied to the Pod
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+	// +optional
+	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
+
+	// Labels applied to the Pod
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	// Node selector for pod scheduling
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations for pod scheduling
+	// https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Affinity for pod scheduling
+	// https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// Pod priority
+	// https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
+	// Manage resource requests & limits
+	// https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+	// +optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+}
+
+type KedaControllerDeprecatedSpec struct {
 	// Logging level for KEDA Controller
 	// allowed values: 'debug', 'info', 'error', or an integer value greater than 0, specified as string
 	// default value: info
@@ -50,9 +159,6 @@ type KedaControllerSpec struct {
 	// default value: "0"
 	// +optional
 	LogLevelMetrics string `json:"logLevelMetrics,omitempty"`
-
-	// +optional
-	WatchNamespace string `json:"watchNamespace,omitempty"`
 
 	// Node selector for pod scheduling - both KEDA Operator and Metrics Server
 	// https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
@@ -83,8 +189,6 @@ type KedaControllerSpec struct {
 	// https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	// +optional
 	ResourcesMetricsServer corev1.ResourceRequirements `json:"resourcesMetricsServer,omitempty"`
-
-	// Important: Run "make" to regenerate code after modifying this file
 }
 
 // KedaControllerStatus defines the observed state of KedaController

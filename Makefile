@@ -13,8 +13,11 @@ TARGET_OS  ?=linux
 
 GIT_VERSION ?= $(shell git describe --always --abbrev=7)
 GIT_COMMIT  ?= $(shell git rev-list -1 HEAD)
+DATE        = $(shell date -u +"%Y.%m.%d.%H.%M.%S")
 
 GO_BUILD_VARS= GO111MODULE=on CGO_ENABLED=$(CGO) GOOS=$(TARGET_OS) GOARCH=$(ARCH)
+
+COSIGN_FLAGS ?= -a GIT_HASH=${GIT_COMMIT} -a GIT_VERSION=${VERSION} -a BUILD_DATE=${DATE}
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -76,9 +79,8 @@ docker-push: ## Push docker image with the manager.
 
 publish: docker-build docker-push ## Build & push docker image with the manager.
 
-publish-dockerhub: ## Mirror image with the manager on Docker Hub
-	docker tag $(IMAGE_CONTROLLER) docker.io/$(IMAGE_REPO)/keda-olm-operator:$(VERSION)
-	docker push docker.io/$(IMAGE_REPO)/keda-olm-operator:$(VERSION)
+sign-images: ## Sign KEDA images published on GitHub Container Registry
+	COSIGN_EXPERIMENTAL=1 cosign sign ${COSIGN_FLAGS} $(IMAGE_CONTROLLER)
 
 ##@ Deployment
 
