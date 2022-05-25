@@ -13,18 +13,18 @@ jobs:
       packages: write
       id-token: write # needed for signing the images with GitHub OIDC Token **not production ready**
 
-    container: kedacore/build-tools:main
+    container: ghcr.io/kedacore/build-tools:main
     steps:
       - name: Check out code
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
         with:
           fetch-depth: 1
           lfs: true
 
-      - name: Install Go 1.17
-        uses: actions/setup-go@v2
+      - name: Setup Go
+        uses: actions/setup-go@v3
         with:
-          go-version: '^1.17'
+          go-version: 1.17
 
       - name: Go modules cache
         uses: actions/cache@v1
@@ -66,15 +66,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
         with:
           fetch-depth: 1
           lfs: true
 
-      - name: Install Go 1.17
-        uses: actions/setup-go@v2
+      - name: Setup Go
+        uses: actions/setup-go@v3
         with:
-          go-version: '^1.17'
+          go-version: 1.17
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v1
@@ -96,19 +96,19 @@ jobs:
           sudo chmod +x opm
           sudo mv opm /usr/bin
 
-      - name: Build and deploy KEDA olm operator index for deployment testing
-        run: make deploy-olm-testing
+      - name: Run functionality tests
+        run: make test-functionality
 
       - name: Setup test environment for deployment tests
         run: |
           kind create cluster
           operator-sdk olm install
 
+      - name: Build and deploy KEDA olm operator index for deployment testing
+        run: make deploy-olm-testing
+
       - name: Run deployment tests
         run: make test-deployment
-
-      - name: Run functionality tests
-        run: make test-functionality
 
   deploy:
     needs: Deploy-test
@@ -116,15 +116,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
         with:
           fetch-depth: 1
           lfs: true
 
-      - name: Install Go 1.17
-        uses: actions/setup-go@v2
+      - name: Setup Go
+        uses: actions/setup-go@v3
         with:
-          go-version: '^1.17'
+          go-version: 1.17
 
       - name: Go modules cache
         uses: actions/cache@v1
@@ -153,6 +153,10 @@ jobs:
 
       - name: Install operator-sdk
         run: brew install operator-sdk
+
+      - name: Disable 'replaces' field, as the testing bundle doesn't replace anything
+        run: |
+          sed -i 's/replaces: /# replaces: /' bundle/manifests/keda.clusterserviceversion.yaml
 
       - name: Build and deploy KEDA olm operator index
         run: make deploy-olm

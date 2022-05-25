@@ -13,10 +13,10 @@ jobs:
       packages: write
       id-token: write # needed for signing the images with GitHub OIDC Token **not production ready**
 
-    container: kedacore/build-tools:main
+    container: ghcr.io/kedacore/build-tools:main
     steps:
       - name: Check out code
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
         with:
           fetch-depth: 1
 
