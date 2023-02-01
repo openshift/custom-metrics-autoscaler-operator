@@ -55,11 +55,18 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+test-audit: manifests generate fmt vet envtest
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing audit flags"
+
 test-functionality: manifests generate fmt vet envtest ## Test functionality.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing functionality"
 
 test-deployment: manifests generate fmt vet envtest ## Test OLM deployment.
+ifeq ($(shell kubectl get namespaces | grep olm),)
+	kubectl create ns olm
+endif
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type deployment -ginkgo.focus "Deploying KedaController manifest"
+	kubectl delete namespace olm
 
 ##@ Build
 
@@ -103,11 +110,11 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.8.0)
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.9.0)
 
 KUSTOMIZE = $(shell pwd)/bin/kustomize
 kustomize: ## Download kustomize locally if necessary.
-	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.10.0)
+	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v4@v4.5.5)
 
 ENVTEST = $(shell pwd)/bin/setup-envtest
 envtest: ## Download envtest-setup locally if necessary.
@@ -122,7 +129,7 @@ TMP_DIR=$$(mktemp -d) ;\
 cd $$TMP_DIR ;\
 go mod init tmp ;\
 echo "Downloading $(2)" ;\
-GOBIN=$(PROJECT_DIR)/bin go get $(2) ;\
+GOBIN=$(PROJECT_DIR)/bin go install $(2) ;\
 rm -rf $$TMP_DIR ;\
 }
 endef
@@ -150,9 +157,15 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # Generate bundle manifests and metadata, then validate generated files.
 .PHONY: bundle
-bundle: manifests	## Generate bundle manifests and metadata, then validate generated files.
+bundle: manifests kustomize	## Generate bundle manifests and metadata, then validate generated files.
+# edit image in config for current changes made to this Makefile so the deployed image is
+# the one that is being built & pushed (in case its no ghcr.io/kedacore)
+	cd config/manager && \
+		$(KUSTOMIZE) edit set image ghcr.io/kedacore/keda-olm-operator=${IMAGE_CONTROLLER}
+	cd config/default && \
+  	$(KUSTOMIZE) edit add label -f app.kubernetes.io/version:${VERSION}
 	operator-sdk generate kustomize manifests -q
-	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite $(BUNDLE_METADATA_OPTS)
 	operator-sdk bundle validate ./bundle
 
 # Build the bundle image.
@@ -167,14 +180,22 @@ bundle-push:
 
 .PHONY: index-build
 index-build:
-	opm index add --bundles ${BUNDLE} --tag ${INDEX} -u docker
+	opm index add --bundles ${BUNDLE} --tag ${INDEX} -u docker --permissive
 
 .PHONY: index-push
 index-push:
 	docker push ${INDEX}
 
-.PHONY: deploy-olm	## Deploy bundle.
-deploy-olm: bundle-build bundle-push index-build index-push
+## docker-build & docker-push bellow are added because in generated dir
+## bundle/manifests csv.yaml file, it refers to docker-pushed image (aka without "bundle")
+## so it needs to be updated as well.
+
+.PHONY: deploy-olm	## Deploy bundle. -- build & bundle to update if changes were made to code
+deploy-olm: build bundle docker-build docker-push bundle-build bundle-push index-build index-push
+ifeq ($(shell kubectl get namespaces | grep keda),)
+	kubectl create namespace keda;
+endif
+	operator-sdk run bundle ${BUNDLE} --namespace keda
 
 .PHONY: deploy-olm-testing
 deploy-olm-testing:

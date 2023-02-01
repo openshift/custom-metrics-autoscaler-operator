@@ -230,6 +230,70 @@ func EnsurePathsToCertsInDeployment(values []string, prefixes []Prefix, scheme *
 	return transforms
 }
 
+func EnsureAuditPolicyConfigMapMountsVolume(configMapName string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
+	return func(u *unstructured.Unstructured) error {
+		if u.GetKind() == "Deployment" {
+			deploy := &appsv1.Deployment{}
+			if err := scheme.Convert(u, deploy, nil); err != nil {
+				return err
+			}
+
+			policyVolume := corev1.Volume{
+				Name: "audit-policy",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: configMapName,
+						},
+					},
+				},
+			}
+			volumes := deploy.Spec.Template.Spec.Volumes
+			policyVolumeFound := false
+			for i := range volumes {
+				if volumes[i].Name == "audit-policy" {
+					volumes[i] = policyVolume
+					policyVolumeFound = true
+				}
+			}
+
+			// add Volume to deployment if not found
+			if !policyVolumeFound {
+				deploy.Spec.Template.Spec.Volumes = append(deploy.Spec.Template.Spec.Volumes, policyVolume)
+			}
+
+			containers := deploy.Spec.Template.Spec.Containers
+			for i := range containers {
+				if containers[i].Name == containerNameMetricsServer {
+					policyVolumeMount := corev1.VolumeMount{
+						Name:      "audit-policy",
+						MountPath: "/var/audit-policy",
+					}
+
+					volumeMounts := containers[i].VolumeMounts
+					policyVolumeMountFound := false
+					for j := range volumeMounts {
+						if volumeMounts[j].Name == "audit-policy" {
+							volumeMounts[j] = policyVolumeMount
+							policyVolumeMountFound = true
+						}
+					}
+					// add VolumeMount to deployment if not found
+					if !policyVolumeMountFound {
+						containers[i].VolumeMounts = append(containers[i].VolumeMounts, policyVolumeMount)
+					}
+
+					break
+				}
+			}
+			if err := scheme.Convert(deploy, u, nil); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
 func ReplaceKedaOperatorLogLevel(logLevel string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
 	found := false
 	for _, level := range logLevelsKedaOperator {
@@ -311,6 +375,63 @@ func ReplaceKedaOperatorLogTimeEncoding(logTimeEncoding string, scheme *runtime.
 	return replaceContainerArg(logTimeEncoding, prefix, containerNameKedaOperator, scheme, logger)
 }
 
+func ReplaceArbitraryArg(argument string, resource string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
+	prefix := Prefix("")
+	prefixStr := ""
+	argTrue := ""
+
+	if strings.Contains(argument, "=") {
+		// if argument is in format --arg=value or arg=value
+		stringSplit := strings.SplitAfter(argument, "=")
+		if !strings.HasPrefix(stringSplit[0], "--") {
+			// add "--" at the beginning of argument prefix if not given
+			prefixStr = "--" + stringSplit[0]
+		} else {
+			prefixStr = stringSplit[0]
+		}
+
+		prefix = Prefix(prefixStr)
+		argTrue = stringSplit[1]
+	} else {
+		// if argument is just value like '/usr/local/bin/keda-adapter' (has no "=" therefore no prefix)
+		argTrue = argument
+	}
+
+	switch resource {
+	case "operator":
+		return replaceContainerArg(argTrue, prefix, containerNameKedaOperator, scheme, logger)
+	case "metricsserver":
+		return replaceContainerArg(argTrue, prefix, containerNameMetricsServer, scheme, logger)
+	default:
+		return func(u *unstructured.Unstructured) error {
+			return nil
+		}
+	}
+}
+
+func ReplaceAuditConfig(argument string, selector string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
+	var prefix string
+	switch selector {
+	case "policyfile":
+		prefix = "--audit-policy-file="
+	case "logformat":
+		prefix = "--audit-log-format="
+	case "logpath":
+		prefix = "--audit-log-path="
+	case "maxage":
+		prefix = "--audit-log-maxage="
+	case "maxbackup":
+		prefix = "--audit-log-maxbackup="
+	case "maxsize":
+		prefix = "--audit-log-maxsize="
+	default:
+		return func(u *unstructured.Unstructured) error {
+			return nil
+		}
+	}
+	return replaceContainerArg(argument, Prefix(prefix), containerNameMetricsServer, scheme, logger)
+}
+
 func replaceContainerArg(value string, prefix Prefix, containerName string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
 	return func(u *unstructured.Unstructured) error {
 		changed := false
@@ -325,6 +446,17 @@ func replaceContainerArg(value string, prefix Prefix, containerName string, sche
 					argFound := false
 					for j, arg := range container.Args {
 						if strings.HasPrefix(arg, prefix.String()) {
+							// If argument has no prefix...
+							if prefix == "" {
+								// and is the same -> dont add it again (change argFound=true)...
+								if arg == value {
+									argFound = true
+									break
+								}
+								// otherwise continue
+								continue
+							}
+
 							argFound = true
 							if trimmedArg := strings.TrimPrefix(arg, prefix.String()); trimmedArg != value {
 								logger.Info("Replacing", "deployment", container.Name, "prefix", prefix.String(), "value", value, "previous", trimmedArg)
@@ -572,6 +704,70 @@ func replaceContainerImage(image string, containerName string, scheme *runtime.S
 				}
 			}
 			return scheme.Convert(deploy, u, nil)
+		}
+		return nil
+	}
+}
+
+func EnsureAuditLogMount(pvc string, path string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
+	const logOutputVolumeName = "audit-log"
+	return func(u *unstructured.Unstructured) error {
+		// ensure mountVolume exists when volume exists
+		if u.GetKind() == "Deployment" {
+			deploy := &appsv1.Deployment{}
+			if err := scheme.Convert(u, deploy, nil); err != nil {
+				return err
+			}
+
+			logOutVolume := corev1.Volume{
+				Name: logOutputVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: pvc,
+					},
+				},
+			}
+			// find volume by name
+			volumes := deploy.Spec.Template.Spec.Volumes
+			logVolumeFound := false
+			for i := range volumes {
+				if volumes[i].Name == logOutputVolumeName {
+					volumes[i] = logOutVolume
+					logVolumeFound = true
+				}
+			}
+
+			// if not found
+			if !logVolumeFound {
+				deploy.Spec.Template.Spec.Volumes = append(deploy.Spec.Template.Spec.Volumes, logOutVolume)
+			}
+
+			containers := deploy.Spec.Template.Spec.Containers
+			for i := range containers {
+				if containers[i].Name == containerNameMetricsServer {
+					auditVolumeMount := corev1.VolumeMount{
+						Name:      logOutputVolumeName,
+						MountPath: path,
+					}
+
+					volumeMounts := containers[i].VolumeMounts
+					auditLogVolumeMountFound := false
+					for j := range volumeMounts {
+						if volumeMounts[j].Name == logOutputVolumeName {
+							volumeMounts[j] = auditVolumeMount
+							auditLogVolumeMountFound = true
+						}
+					}
+					// add VolumeMount to deployment if not found
+					if !auditLogVolumeMountFound {
+						containers[i].VolumeMounts = append(containers[i].VolumeMounts, auditVolumeMount)
+					}
+					break
+				}
+			}
+			if err := scheme.Convert(deploy, u, nil); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
