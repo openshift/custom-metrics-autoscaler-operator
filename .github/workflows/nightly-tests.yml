@@ -11,7 +11,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v3
         with:
-          go-version: 1.17
+          go-version: 1.18
 
       - name: Check out code
         uses: actions/checkout@v3
@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 1
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v1
+        uses: docker/login-action@v2
         with:
           # Username used to log in to a Docker registry. If not set then no login will occur
           username: ${{ github.repository_owner }}
@@ -28,12 +28,19 @@ jobs:
           # Server address of Docker registry. If not set then will default to Docker Hub
           registry: ghcr.io
 
+      # homebrew (+ gcc etc.) removed from $PATH on Ubuntu images.
+      # https://github.com/actions/runner-images/issues/6283
+      - name: Setup Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+      - name: Setup Env
+        run: sudo apt-get install gcc-11 g++ binutils libc6
+
       - name: Install operator-sdk
         run: brew install operator-sdk
 
       - name: Download opm
         run: |
-          version=1.15.0
+          version=1.26.1
           curl -L https://github.com/operator-framework/operator-registry/releases/download/v${version}/linux-amd64-opm --output opm
           sudo chmod +x opm
           sudo mv opm /usr/bin
@@ -41,13 +48,18 @@ jobs:
       - name: Run functionality tests
         run: make test-functionality
 
+      - name: Run audit flags tests
+        run: make test-audit
+
       - name: Setup test environment for deployment tests
         run: |
           kind create cluster
           operator-sdk olm install
 
       - name: Build and deploy KEDA olm operator index for deployment testing
-        run: make deploy-olm-testing
+        run: |
+          kubectl create namespace keda
+          make deploy-olm-testing
 
       - name: Run deployment tests
         run: make test-deployment
