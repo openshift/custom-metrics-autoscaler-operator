@@ -1,0 +1,7 @@
+approvers:
+  - joelsmith
+  - rphillips
+  - zroubalik
+
+# Bugzilla fields:
+component: Node
