@@ -519,17 +519,23 @@ spec:
             spec:
               containers:
               - args:
+                - -c
+                - export KEDA_OPERATOR_IMAGE=$RELATED_IMAGE_1; export KEDA_METRICS_SERVER_IMAGE=$RELATED_IMAGE_2; exec /manager "$0" "$@"
                 - --leader-elect
                 - --zap-log-level=info
                 - --zap-encoder=console
                 - --zap-time-encoding=rfc3339
                 command:
-                - /manager
+                - /usr/bin/bash
                 env:
                 - name: WATCH_NAMESPACE
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.annotations['olm.targetNamespaces']
+                - name: RELATED_IMAGE_1
+                  value: CMA_OPERAND_PLACEHOLDER_1
+                - name: RELATED_IMAGE_2
+                  value: CMA_OPERAND_PLACEHOLDER_2
                 image: ghcr.io/kedacore/keda-olm-operator:2.7.1
                 imagePullPolicy: Always
                 livenessProbe:
