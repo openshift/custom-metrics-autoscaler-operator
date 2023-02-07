@@ -48,9 +48,25 @@ spec:
   version: ${ver}
 CMA_PATCH_EOF
 
-# del() to delete array items from upstream, walk to change the deployment from keda-olm-operator to cma operator, search/replace other fields
-{ bin/yaml2json keda/${ver}/manifests/keda.v${ver}.clusterserviceversion.yaml | \
-    jq 'del(.spec.icon) | del(.spec.links) | del(.spec.maintainers) | walk(if type == "string" and . == "keda-olm-operator" then .="custom-metrics-autoscaler-operator" else . end) | .spec.replaces |= sub("keda.v"; "custom-metrics-autoscaler.v") | .metadata.annotations."alm-examples" |= sub("\"namespace\": \"keda\""; "\"namespace\": \"openshift-keda\"")';
+# build up jq_filter a little at a time, since it is very long
+
+# delete array items from upstream so that we can populate them using the CMA data above
+jq_filter='del(.spec.icon) | del(.spec.links) | del(.spec.maintainers) | '
+# change all strings with value "keda-olm-operator" to "custom-metrics-autoscaler-operator"
+jq_filter="$jq_filter"'walk(if type == "string" and . == "keda-olm-operator" then .="custom-metrics-autoscaler-operator" else . end) | '
+# change .spec.replaces from (for example) "keda.v2.8.1" to "custom-metrics-autoscaler.v2.8.1"
+jq_filter="$jq_filter"'.spec.replaces |= sub("keda.v"; "custom-metrics-autoscaler.v") | '
+# update the json example CR so that it shows you how to install to "openshift-keda" namespace instead of "keda" namespace
+jq_filter="$jq_filter"'.metadata.annotations."alm-examples" |= sub("\"namespace\": \"keda\""; "\"namespace\": \"openshift-keda\"") | '
+# set the command to bash instead of /manager
+jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].command |= [ "/usr/bin/bash" ] |'
+# export the env vars and then exec /manager
+jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].args |= ["-c", "export KEDA_OPERATOR_IMAGE=$RELATED_IMAGE_1; export KEDA_METRICS_SERVER_IMAGE=$RELATED_IMAGE_2; exec /manager \"$0\" \"$@\"" ] + .  |'
+# create a spot to pass in the operand image specs as env vars
+jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].env += [{"name":"RELATED_IMAGE_1","value":"CMA_OPERAND_PLACEHOLDER_1"},{"name":"RELATED_IMAGE_2","value":"CMA_OPERAND_PLACEHOLDER_2"}]'
+
+# pipe the filtered upstream CSV and the patch together to jq to combine them
+{ bin/yaml2json keda/${ver}/manifests/keda.v${ver}.clusterserviceversion.yaml | jq "$jq_filter";
   echo "$cma_patch" | bin/yaml2json; } | \
   jq --slurp 'reduce .[] as $item ({}; . * $item)' | bin/json2yaml > keda/${ver}/manifests/cma.v${ver}.clusterserviceversion.yaml.new
 
