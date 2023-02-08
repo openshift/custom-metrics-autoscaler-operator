@@ -121,6 +121,7 @@ metadata:
     support: Red Hat
   name: custom-metrics-autoscaler.v2.8.2
   namespace: placeholder
+  olm.skipRange: '>=2.7.1 <2.8.2'
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
@@ -591,6 +592,5 @@ spec:
   minKubeVersion: 1.17.0
   provider:
     name: Red Hat
-  replaces: custom-metrics-autoscaler.v2.8.1
   selector: {}
   version: 2.8.2
