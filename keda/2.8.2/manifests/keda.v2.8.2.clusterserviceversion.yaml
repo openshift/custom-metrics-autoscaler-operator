@@ -589,6 +589,6 @@ spec:
   minKubeVersion: 1.17.0
   provider:
     name: KEDA Community
-  replaces: keda.v2.7.1
+  replaces: keda.v2.8.1
   selector: {}
   version: 2.8.2
