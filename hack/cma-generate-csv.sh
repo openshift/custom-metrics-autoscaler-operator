@@ -31,6 +31,7 @@ metadata:
    repository: https://github.com/openshift/custom-metrics-autoscaler-operator
    support: Red Hat
   name: custom-metrics-autoscaler.v${ver}
+  olm.skipRange: ">=2.7.1 <${ver}"
 spec:
   description: "## About the managed application\\nCustom Metrics Autoscaler for OpenShift is an event driven autoscaler based upon KEDA.  Custom Metrics Autoscaler can monitor event sources like Kafka, RabbitMQ, or cloud event sources and feed the metrics from those sources into the Kubernetes horizontal pod autoscaler.  With Custom Metrics Autoscaler, you can have event driven and serverless scale of deployments within any Kubernetes cluster.\\n## About this Operator\\nThe Custom Metrics Autoscaler Operator deploys and manages installation of KEDA Controller in the cluster. Install this operator and follow installation instructions on how to install Custom Metrics Autoscaler in you cluster.\\n\\n## Prerequisites for enabling this Operator\\n## How to install Custom Metrics Autoscaler in the cluster\\nThe installation of Custom Metrics Autoscaler is triggered by the creation of \`KedaController\` resource. Please refer to the [KedaController Spec](https://github.com/openshift/custom-metrics-autoscaler-operator/blob/main/README.md#the-kedacontroller-custom-resource) for more deatils on available options.\\n\\nOnly resource named \`keda\` in namespace \`openshift-keda\` will trigger the installation, reconfiguration or removal of the KEDA Controller resource.\\n\\nThere should be only one KEDA Controller in the cluster. \\n"
   displayName: Custom Metrics Autoscaler
@@ -54,8 +55,8 @@ CMA_PATCH_EOF
 jq_filter='del(.spec.icon) | del(.spec.links) | del(.spec.maintainers) | '
 # change all strings with value "keda-olm-operator" to "custom-metrics-autoscaler-operator"
 jq_filter="$jq_filter"'walk(if type == "string" and . == "keda-olm-operator" then .="custom-metrics-autoscaler-operator" else . end) | '
-# change .spec.replaces from (for example) "keda.v2.8.1" to "custom-metrics-autoscaler.v2.8.1"
-jq_filter="$jq_filter"'.spec.replaces |= sub("keda.v"; "custom-metrics-autoscaler.v") | '
+# in CMA, we use olm.skipRange instead of replaces
+jq_filter="$jq_filter"'del(.spec.replaces) | '
 # update the json example CR so that it shows you how to install to "openshift-keda" namespace instead of "keda" namespace
 jq_filter="$jq_filter"'.metadata.annotations."alm-examples" |= sub("\"namespace\": \"keda\""; "\"namespace\": \"openshift-keda\"") | '
 # set the command to bash instead of /manager

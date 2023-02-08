@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# we only care about CSV files after 2.7.1
-csv_versions="$(ls keda | sort --version-sort | sed -n '/^2\.7\.1$/,$ p')"
+# This command will show only versions >= 2.8.2, which are the only ones we care about for the check
+csv_versions="$(ls keda | sort --version-sort | sed -n '/^2\.8\.2$/,$ p')"
 
 script_dir="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
