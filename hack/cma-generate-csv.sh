@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if [ $1 = "--dry-run" ]; then
+if [ "$1" = "--dry-run" ]; then
   dry_run=1
   shift
 fi
@@ -28,6 +28,7 @@ metadata:
   annotations:
    description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
    operatorframework.io/suggested-namespace: openshift-keda
+   operators.openshift.io/valid-subscription: '["OpenShift Kubernetes Engine", "OpenShift Container Platform", "OpenShift Platform Plus"]'
    repository: https://github.com/openshift/custom-metrics-autoscaler-operator
    support: Red Hat
   name: custom-metrics-autoscaler.v${ver}
