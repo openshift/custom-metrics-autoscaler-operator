@@ -7,7 +7,7 @@ To gather only Openshift Custom Metric Autoscaler Operator information use the f
 ```sh
   oc adm must-gather --image="$(oc get packagemanifests openshift-custom-metrics-autoscaler-operator \
     -n openshift-marketplace \
-    -o jsonpath='{.status.channels[?(@.name=="stable")].currentCSVDesc. annotations.containerImage}')"
+    -o jsonpath='{.status.channels[?(@.name=="stable")].currentCSVDesc.annotations.containerImage}')"
 ```
 where the custom image for the must-gather command is pulled directly from the operator' package manifests, so that 
 it works on any cluster with Custom Metric Autoscaler Operator is available.
