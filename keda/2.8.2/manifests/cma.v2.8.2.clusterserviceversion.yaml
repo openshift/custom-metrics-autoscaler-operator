@@ -114,6 +114,7 @@ metadata:
     containerImage: ghcr.io/kedacore/keda-olm-operator:2.8.2
     createdAt: "2023-01-25T00:00:00.000Z"
     description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
+    olm.skipRange: '>=2.7.1 <2.8.2'
     operatorframework.io/suggested-namespace: openshift-keda
     operators.openshift.io/valid-subscription: '["OpenShift Kubernetes Engine", "OpenShift Container Platform", "OpenShift Platform Plus"]'
     operators.operatorframework.io/builder: operator-sdk-v1.23.0
@@ -122,7 +123,6 @@ metadata:
     support: Red Hat
   name: custom-metrics-autoscaler.v2.8.2
   namespace: placeholder
-  olm.skipRange: '>=2.7.1 <2.8.2'
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:

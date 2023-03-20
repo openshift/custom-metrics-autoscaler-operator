@@ -26,13 +26,13 @@ cd "$script_dir"/..
 read -r -d '' cma_patch <<CMA_PATCH_EOF
 metadata:
   annotations:
-   description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
-   operatorframework.io/suggested-namespace: openshift-keda
-   operators.openshift.io/valid-subscription: '["OpenShift Kubernetes Engine", "OpenShift Container Platform", "OpenShift Platform Plus"]'
-   repository: https://github.com/openshift/custom-metrics-autoscaler-operator
-   support: Red Hat
+    description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
+    operatorframework.io/suggested-namespace: openshift-keda
+    operators.openshift.io/valid-subscription: '["OpenShift Kubernetes Engine", "OpenShift Container Platform", "OpenShift Platform Plus"]'
+    repository: https://github.com/openshift/custom-metrics-autoscaler-operator
+    support: Red Hat
+    olm.skipRange: ">=2.7.1 <${ver}"
   name: custom-metrics-autoscaler.v${ver}
-  olm.skipRange: ">=2.7.1 <${ver}"
 spec:
   description: "## About the managed application\\nCustom Metrics Autoscaler for OpenShift is an event driven autoscaler based upon KEDA.  Custom Metrics Autoscaler can monitor event sources like Kafka, RabbitMQ, or cloud event sources and feed the metrics from those sources into the Kubernetes horizontal pod autoscaler.  With Custom Metrics Autoscaler, you can have event driven and serverless scale of deployments within any Kubernetes cluster.\\n## About this Operator\\nThe Custom Metrics Autoscaler Operator deploys and manages installation of KEDA Controller in the cluster. Install this operator and follow installation instructions on how to install Custom Metrics Autoscaler in you cluster.\\n\\n## Prerequisites for enabling this Operator\\n## How to install Custom Metrics Autoscaler in the cluster\\nThe installation of Custom Metrics Autoscaler is triggered by the creation of \`KedaController\` resource. Please refer to the [KedaController Spec](https://github.com/openshift/custom-metrics-autoscaler-operator/blob/main/README.md#the-kedacontroller-custom-resource) for more deatils on available options.\\n\\nOnly resource named \`keda\` in namespace \`openshift-keda\` will trigger the installation, reconfiguration or removal of the KEDA Controller resource.\\n\\nThere should be only one KEDA Controller in the cluster. \\n"
   displayName: Custom Metrics Autoscaler
