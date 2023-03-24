@@ -28,7 +28,7 @@ metadata:
   annotations:
     description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
     operatorframework.io/suggested-namespace: openshift-keda
-    operatorframework.io/cluster-monitoring: true
+    operatorframework.io/cluster-monitoring: "true"
     operators.openshift.io/valid-subscription: '["OpenShift Kubernetes Engine", "OpenShift Container Platform", "OpenShift Platform Plus"]'
     repository: https://github.com/openshift/custom-metrics-autoscaler-operator
     support: Red Hat
