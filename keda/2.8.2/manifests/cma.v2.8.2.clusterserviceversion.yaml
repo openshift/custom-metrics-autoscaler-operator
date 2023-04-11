@@ -547,6 +547,10 @@ spec:
                     port: 8081
                   initialDelaySeconds: 25
                 name: custom-metrics-autoscaler-operator
+                ports:
+                - containerPort: 8080
+                  name: http
+                  protocol: TCP
                 readinessProbe:
                   httpGet:
                     path: /readyz
@@ -567,6 +571,15 @@ spec:
               securityContext:
                 runAsNonRoot: true
               serviceAccountName: custom-metrics-autoscaler-operator
+      permissions:
+      - rules:
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - podmonitors
+          verbs:
+          - '*'
+        serviceAccountName: custom-metrics-autoscaler-operator
     strategy: deployment
   installModes:
   - supported: false

@@ -8966,3 +8966,51 @@ spec:
     namespace: keda
   version: v1beta1
   versionPriority: 100
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: custom-metrics-autoscaler-operator
+  namespace: openshift-keda
+  labels:
+    name: custom-metrics-autoscaler-operator
+spec:
+  selector:
+    matchLabels:
+      name: custom-metrics-autoscaler-operator
+  podMetricsEndpoints:
+    - targetPort: 8080
+      path: /metrics
+      interval: 60s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: keda-metrics-apiserver
+  namespace: openshift-keda
+  labels:
+    app: keda-metrics-apiserver
+spec:
+  selector:
+    matchLabels:
+      app: keda-metrics-apiserver
+  podMetricsEndpoints:
+    - targetPort: 8080
+      path: /metrics
+      interval: 60s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: keda-operator
+  namespace: openshift-keda
+  labels:
+    name: keda-operator
+spec:
+  selector:
+    matchLabels:
+      name: keda-operator
+  podMetricsEndpoints:
+    - targetPort: 8080
+      path: /metrics
+      interval: 60s
