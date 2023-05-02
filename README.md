@@ -11,7 +11,9 @@
   - [Uninstallation](#uninstallation)
     - [How to uninstall KEDA Controller](#how-to-uninstall-keda-controller)
     - [How to uninstall KEDA OLM Operator](#how-to-uninstall-keda-olm-operator)
+  - [Monitoring](#monitoring)
   - [Development](#development)
+    - [Pre-requisites](#pre-requisites)
     - [Operator Framework](#operator-framework)
     - [Running locally](#running-locally)
     - [Building the Operator Image](#building-the-operator-image)
@@ -204,6 +206,42 @@ spec:
     #     maxBackup: "1"
     #     maxSize: "50"
 
+    # --- Audit Config Example 1 ---
+    ## Log request metadata but not request or response body to stdout
+    # auditConfig:
+    #   policy:
+    #     rules:
+    #     - level: Metadata
+
+    # --- Audit Config Example 2 ---
+    ## Log request metadata to PersistentVolumeClaim with max output file size of 50MB
+    # auditConfig:
+    #   logOutputVolumeClaim: "persistentVolumeClaimName"
+    #   policy:
+    #     rules:
+    #     - level: Metadata
+    #   lifetime:
+    #     maxSize: "50"
+
+    # --- Audit Config Example 3 ---
+    ## Omits all requests in RequestReceived stage, first rule logs pod changes
+    ## at RequestResponse level & second rule forbids logging requests to a
+    ## configmap called "controller-leader".
+    # auditConfig:
+    #   policy:
+    #     omitStages:
+    #      - "RequestReceived"
+    #     rules:
+    #     - level: RequestResponse
+    #       resources:
+    #       - group: ""
+    #         resources: ["pods"]
+    #     - level: None
+    #       resources:
+    #       - group: ""
+    #         resources: ["configmaps"]
+    #         resourceNames: ["controller-leader"]
+
     ## Annotations to be added to the KEDA Metrics Server Deployment
     # https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
     # deploymentAnnotations:
@@ -301,7 +339,32 @@ In case of manual installation, run these commands:
 make undeploy
 ```
 
+## Monitoring
+This operator contains monitoring configuration to enable Prometheus metrics
+collection. ServiceMonitor and PodMonitor instances are created if the CRDs from
+the Monitoring API are available in the cluster.
+
 ## Development
+
+### Pre-requisites
+
+This project uses the following tools for development.
+
+#### golangci-lint
+
+To install `golangci-lint` locally follow the [official documentation](https://golangci-lint.run/usage/install/#local-installation).
+
+#### pre-commit
+
+To install `pre-commit` locally follow the [official documentation](https://pre-commit.com/#install).
+`pre-commit` uses the [.pre-commit-config.yaml](.pre-commit-config.yaml) configuration file located in the root of the
+project.
+
+To set up the `git` hook script execute the following command so that the pre-commit steps runs automatically on
+each commit.
+```bash
+pre-commit install
+```
 
 ### Operator Framework
 
