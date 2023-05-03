@@ -112,10 +112,10 @@ metadata:
     categories: Cloud Provider
     certified: "false"
     containerImage: ghcr.io/kedacore/keda-olm-operator:2.8.1
-    createdAt: "2022-05-11T00:00:00.000Z"
+    createdAt: "2023-04-20T21:03:06Z"
     description: Operator that provides KEDA, a Kubernetes-based event driver autoscaler
     operatorframework.io/suggested-namespace: keda
-    operators.operatorframework.io/builder: operator-sdk-v1.23.0
+    operators.operatorframework.io/builder: operator-sdk-v1.28.0+git
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
     repository: https://github.com/kedacore/keda-olm-operator
     support: KEDA Community
@@ -497,10 +497,12 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - podmonitors
           - servicemonitors
           verbs:
           - create
           - get
+          - list
         - apiGroups:
           - rbac.authorization.k8s.io
           resources:
@@ -558,6 +560,10 @@ spec:
                     port: 8081
                   initialDelaySeconds: 25
                 name: keda-olm-operator
+                ports:
+                - containerPort: 8080
+                  name: http
+                  protocol: TCP
                 readinessProbe:
                   httpGet:
                     path: /readyz

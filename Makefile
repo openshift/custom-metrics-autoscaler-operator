@@ -77,11 +77,8 @@ test-functionality: manifests generate fmt vet envtest ## Test functionality.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing functionality"
 
 test-deployment: manifests generate fmt vet envtest ## Test OLM deployment.
-ifeq ($(shell kubectl get namespaces | grep olm),)
-	kubectl create ns olm
-endif
+	kubectl create namespace olm --dry-run=client -o yaml | kubectl apply -f -
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type deployment -ginkgo.focus "Deploying KedaController manifest"
-	kubectl delete namespace olm
 
 ##@ Build
 
@@ -125,7 +122,7 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.9.0)
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.10.0)
 
 KUSTOMIZE = $(shell pwd)/bin/kustomize
 kustomize: ## Download kustomize locally if necessary.
@@ -207,9 +204,7 @@ index-push:
 
 .PHONY: deploy-olm	## Deploy bundle. -- build & bundle to update if changes were made to code
 deploy-olm: build bundle docker-build docker-push bundle-build bundle-push index-build index-push
-ifeq ($(shell kubectl get namespaces | grep keda),)
-	kubectl create namespace keda;
-endif
+	kubectl create namespace keda --dry-run=client -o yaml | kubectl apply -f -
 	operator-sdk run bundle ${BUNDLE} --namespace keda
 
 .PHONY: deploy-olm-testing
