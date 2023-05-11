@@ -6,21 +6,41 @@ metadata:
       [
         {
           "apiVersion": "keda.sh/v1alpha1",
+          "kind": "ClusterTriggerAuthentication",
+          "metadata": {
+            "name": "example-clustertriggerauthentication"
+          },
+          "spec": {
+            "secretTargetRef": [
+              {
+                "key": "example-role-key",
+                "name": "example-secret-name",
+                "parameter": "exmaple-secret-parameter"
+              }
+            ]
+          }
+        },
+        {
+          "apiVersion": "keda.sh/v1alpha1",
           "kind": "KedaController",
           "metadata": {
             "name": "keda",
             "namespace": "openshift-keda"
           },
           "spec": {
-            "watchNamespace": "",
-            "operator": {
-              "logLevel": "info",
-              "logEncoder": "console"
+            "admissionWebhooks": {
+              "logEncoder": "console",
+              "logLevel": "info"
             },
             "metricsServer": {
               "logLevel": "0"
             },
-            "serviceAccount": {}
+            "operator": {
+              "logEncoder": "console",
+              "logLevel": "info"
+            },
+            "serviceAccount": null,
+            "watchNamespace": ""
           }
         },
         {
@@ -90,22 +110,6 @@ metadata:
               }
             ]
           }
-        },
-        {
-          "apiVersion": "keda.sh/v1alpha1",
-          "kind": "ClusterTriggerAuthentication",
-          "metadata": {
-            "name": "example-clustertriggerauthentication"
-          },
-          "spec": {
-            "secretTargetRef": [
-              {
-                "key": "example-role-key",
-                "name": "example-secret-name",
-                "parameter": "exmaple-secret-parameter"
-              }
-            ]
-          }
         }
       ]
     capabilities: Seamless Upgrades
@@ -128,6 +132,31 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
+    - description: Describes cluster wide authentication parameters
+      displayName: ClusterTriggerAuthentication
+      kind: ClusterTriggerAuthentication
+      name: clustertriggerauthentications.keda.sh
+      resources:
+      - kind: Secret
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: Env
+        displayName: Env
+        path: env
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Pod Identity
+        displayName: Pod Identity
+        path: podIdentity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Secret Target Ref
+        displayName: Secret Target Ref
+        path: secretTargetRef
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:Secret
+      version: v1alpha1
     - description: |
         Represents an installation of a particular version of KEDA Controller.
       displayName: KedaController
@@ -166,6 +195,16 @@ spec:
       - description: 'Log Level for KEDA Metrics Server, allowed values: "0" for info, "4" for debug, or an integer value greater than 0, specified as string'
         displayName: Log Level Metrics
         path: metricsServer.logLevel
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: 'Log Level for KEDA Admission Webhooks, allowed values: ''debug'', ''info'', ''error'', or an integer value greater than 0, specified as string'
+        displayName: Log Level
+        path: admissionWebhooks.logLevel
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Log format for KEDA Admission Webhooks, allowed values are 'json' and 'console'
+        displayName: Log Format
+        path: admissionWebhooks.logEncoder
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:text
       - description: Namespace that should the created KEDA controller watch, blank means all namespaces
@@ -396,31 +435,6 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:Secret
       version: v1alpha1
-    - description: Describes cluster wide authentication parameters
-      displayName: ClusterTriggerAuthentication
-      kind: ClusterTriggerAuthentication
-      name: clustertriggerauthentications.keda.sh
-      resources:
-      - kind: Secret
-        name: ""
-        version: v1
-      specDescriptors:
-      - description: Env
-        displayName: Env
-        path: env
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:text
-      - description: Pod Identity
-        displayName: Pod Identity
-        path: podIdentity
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:text
-      - description: Secret Target Ref
-        displayName: Secret Target Ref
-        path: secretTargetRef
-        x-descriptors:
-        - urn:alm:descriptor:io.kubernetes:Secret
-      version: v1alpha1
   description: "## About the managed application\nCustom Metrics Autoscaler for OpenShift is an event driven autoscaler based upon KEDA.  Custom Metrics Autoscaler can monitor event sources like Kafka, RabbitMQ, or cloud event sources and feed the metrics from those sources into the Kubernetes horizontal pod autoscaler.  With Custom Metrics Autoscaler, you can have event driven and serverless scale of deployments within any Kubernetes cluster.\n## About this Operator\nThe Custom Metrics Autoscaler Operator deploys and manages installation of KEDA Controller in the cluster. Install this operator and follow installation instructions on how to install Custom Metrics Autoscaler in you cluster.\n\n## Prerequisites for enabling this Operator\n## How to install Custom Metrics Autoscaler in the cluster\nThe installation of Custom Metrics Autoscaler is triggered by the creation of `KedaController` resource. Please refer to the [KedaController Spec](https://github.com/openshift/custom-metrics-autoscaler-operator/blob/main/README.md#the-kedacontroller-custom-resource) for more deatils on available options.\n\nOnly resource named `keda` in namespace `openshift-keda` will trigger the installation, reconfiguration or removal of the KEDA Controller resource.\n\nThere should be only one KEDA Controller in the cluster. \n"
   displayName: Custom Metrics Autoscaler
   icon:
@@ -446,11 +460,28 @@ spec:
           verbs:
           - '*'
         - apiGroups:
+          - admissionregistration.k8s.io
+          resources:
+          - validatingwebhookconfigurations
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
           - apiregistration.k8s.io
           resources:
           - apiservices
           verbs:
-          - '*'
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
         - apiGroups:
           - apps
           resources:
@@ -469,6 +500,12 @@ spec:
           verbs:
           - '*'
         - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - '*'
+        - apiGroups:
           - keda.sh
           resources:
           - kedacontrollers
@@ -477,26 +514,25 @@ spec:
           verbs:
           - '*'
         - apiGroups:
-          - coordination.k8s.io
-          resources:
-          - leases
-          verbs:
-          - '*'
-        - apiGroups:
           - monitoring.coreos.com
           resources:
-          - servicemonitors
           - podmonitors
+          - servicemonitors
           verbs:
           - create
+          - delete
           - get
           - list
+          - patch
+          - update
+          - watch
         - apiGroups:
           - rbac.authorization.k8s.io
           resources:
           - clusterrolebindings
           - clusterroles
           - rolebindings
+          - roles
           verbs:
           - '*'
         - apiGroups:
