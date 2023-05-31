@@ -561,24 +561,22 @@ spec:
             spec:
               containers:
               - args:
-                - -c
-                - export KEDA_OPERATOR_IMAGE=$RELATED_IMAGE_1; export KEDA_METRICS_SERVER_IMAGE=$RELATED_IMAGE_2; export KEDA_ADMISSION_WEBHOOKS_IMAGE=$RELATED_IMAGE_3; exec /manager "$0" "$@"
                 - --leader-elect
                 - --zap-log-level=info
                 - --zap-encoder=console
                 - --zap-time-encoding=rfc3339
                 command:
-                - /usr/bin/bash
+                - /manager
                 env:
                 - name: WATCH_NAMESPACE
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.annotations['olm.targetNamespaces']
-                - name: RELATED_IMAGE_1
+                - name: KEDA_OPERATOR_IMAGE
                   value: CMA_OPERAND_PLACEHOLDER_1
-                - name: RELATED_IMAGE_2
+                - name: KEDA_METRICS_SERVER_IMAGE
                   value: CMA_OPERAND_PLACEHOLDER_2
-                - name: RELATED_IMAGE_3
+                - name: KEDA_ADMISSION_WEBHOOKS_IMAGE
                   value: CMA_OPERAND_PLACEHOLDER_3
                 image: ghcr.io/kedacore/keda-olm-operator:2.10.1
                 imagePullPolicy: Always
