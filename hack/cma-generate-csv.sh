@@ -61,12 +61,8 @@ jq_filter="$jq_filter"'walk(if type == "string" and . == "keda-olm-operator" the
 jq_filter="$jq_filter"'del(.spec.replaces) | '
 # update the json example CR so that it shows you how to install to "openshift-keda" namespace instead of "keda" namespace
 jq_filter="$jq_filter"'.metadata.annotations."alm-examples" |= sub("\"namespace\": \"keda\""; "\"namespace\": \"openshift-keda\"") | '
-# set the command to bash instead of /manager
-jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].command |= [ "/usr/bin/bash" ] |'
-# export the env vars and then exec /manager
-jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].args |= ["-c", "export KEDA_OPERATOR_IMAGE=$RELATED_IMAGE_1; export KEDA_METRICS_SERVER_IMAGE=$RELATED_IMAGE_2; export KEDA_ADMISSION_WEBHOOKS_IMAGE=$RELATED_IMAGE_3; exec /manager \"$0\" \"$@\"" ] + .  |'
 # create a spot to pass in the operand image specs as env vars
-jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].env += [{"name":"RELATED_IMAGE_1","value":"CMA_OPERAND_PLACEHOLDER_1"},{"name":"RELATED_IMAGE_2","value":"CMA_OPERAND_PLACEHOLDER_2"},{"name":"RELATED_IMAGE_3","value":"CMA_OPERAND_PLACEHOLDER_3"}]'
+jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].env += [{"name":"KEDA_OPERATOR_IMAGE","value":"CMA_OPERAND_PLACEHOLDER_1"},{"name":"KEDA_METRICS_SERVER_IMAGE","value":"CMA_OPERAND_PLACEHOLDER_2"},{"name":"KEDA_ADMISSION_WEBHOOKS_IMAGE","value":"CMA_OPERAND_PLACEHOLDER_3"}]'
 
 # pipe the filtered upstream CSV and the patch together to jq to combine them
 { bin/yaml2json keda/${ver}/manifests/keda.v${ver}.clusterserviceversion.yaml | jq "$jq_filter";
