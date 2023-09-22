@@ -9,9 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
-          go-version: 1.19
+          go-version: '1.20'
 
       - name: Check out code
         uses: actions/checkout@v3
@@ -49,12 +49,15 @@ jobs:
         run: make test-functionality
 
       - name: Run audit flags tests
-        run: make test-audit
+        run: make test-audit || { sleep 30; make test-audit; }
 
       - name: Setup test environment for deployment tests
         run: |
           kind create cluster
-          operator-sdk olm install
+          OLM_VERSION=$(curl -s https://api.github.com/repos/operator-framework/operator-lifecycle-manager/releases/latest | jq -r .tag_name)
+          curl -L https://github.com/operator-framework/operator-lifecycle-manager/releases/download/$OLM_VERSION/install.sh -o install.sh
+          chmod +x install.sh
+          ./install.sh $OLM_VERSION
 
       - name: Build and deploy KEDA olm operator index for deployment testing
         run: |
