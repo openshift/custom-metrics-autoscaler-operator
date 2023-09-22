@@ -55,21 +55,6 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-.PHONY: cma-check-all-csv
-cma-check-all-csv: build-testutil ## Verify that CMA CSV files look right
-	hack/cma-check-all-csv.sh
-
-.PHONY: build-testutil
-build-testutil: bin/yaml2json bin/json2yaml ## Build utilities needed by tests
-
-# utilities needed by tests
-bin/yaml2json: cmd/testutil/yaml2json/yaml2json.go
-	mkdir -p bin
-	go build $(GOGCFLAGS) -ldflags "$(LD_FLAGS)" -o bin/ "github.com/kedacore/keda-olm-operator/cmd/testutil/yaml2json"
-bin/json2yaml: cmd/testutil/json2yaml/json2yaml.go
-	mkdir -p bin
-	go build $(GOGCFLAGS) -ldflags "$(LD_FLAGS)" -o bin/ "github.com/kedacore/keda-olm-operator/cmd/testutil/json2yaml"
-
 test-audit: manifests generate fmt vet envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing audit flags"
 
@@ -140,7 +125,7 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Install kustomize from vendor dir if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
-	test -s $(LOCALBIN)/kustomize || GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4
+	test -s $(LOCALBIN)/kustomize || GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v5
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Install envtest-setup from vendor dir if necessary.

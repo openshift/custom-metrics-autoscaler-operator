@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -32,6 +33,10 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -44,6 +49,10 @@ import (
 var (
 	scheme   = apimachineryruntime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+)
+
+const (
+	serviceAccountNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 )
 
 func init() {
@@ -75,12 +84,12 @@ func main() {
 	installNamespace := getWatchNamespace()
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+		WebhookServer:          webhook.NewServer(webhook.Options{Port: 9443}),
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "olm-operator.keda.sh",
-		Namespace:              installNamespace,
+		Cache:                  cache.Options{DefaultNamespaces: map[string]cache.Config{getWatchNamespace(): {}}},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -134,12 +143,20 @@ func main() {
 }
 
 // getWatchNamespace returns the namespace the operator should be watching for changes
-// it tries to read this information from env variable `WATCH_NAMESPACE`
-// if not set, namespace `keda` is used
+// It tries to read this information from env variable `WATCH_NAMESPACE`. If not set
+// or empty, it attempts to determine which namespace it is running in via the
+// automounted service account data. If unavailable, namespace `keda` is used
 func getWatchNamespace() string {
-	ns, found := os.LookupEnv("WATCH_NAMESPACE")
-	if !found {
-		return "keda"
+	var ns string
+	var found bool
+	if ns, found = os.LookupEnv("WATCH_NAMESPACE"); found && len(ns) > 0 {
+		setupLog.Info(fmt.Sprintf("Using watch namespace '%s' from environment variable WATCH_NAMESPACE", ns))
+	} else if nsBytes, err := os.ReadFile(serviceAccountNamespaceFile); err == nil {
+		ns = strings.TrimSpace(string(nsBytes))
+		setupLog.Info(fmt.Sprintf("Using watch namespace '%s' from service account namespace specified in %s", ns, serviceAccountNamespaceFile))
+	} else {
+		ns = "keda"
+		setupLog.Info(fmt.Sprintf("Using default watch namespace '%s'", ns))
 	}
 	return ns
 }
