@@ -42,7 +42,7 @@ spec:
     mediatype: image/svg+xml
   links:
   - name: Custom Metrics Autoscaler Documentation
-    url: https://docs.openshift.com/container-platform/latest/nodes/pods/nodes-pods-autoscaling-custom.html
+    url: https://docs.openshift.com/container-platform/latest/nodes/cma/nodes-cma-autoscaling-custom.html
   maintainers:
   - email: support@redhat.com
     name: Red Hat
