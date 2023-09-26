@@ -23,10 +23,22 @@ script_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd "$script_dir"/..
 
 # This yaml data will overwrite fields from the upstream version. Any array fields must be removed first via the below jq filter
+# See https://docs.engineering.redhat.com/display/CFC/Best_Practices#Best_Practices-(New)RequiredInfrastructureAnnotations for
+# information on features.oeprators.openshift.io/* annotations
 read -r -d '' cma_patch <<CMA_PATCH_EOF
 metadata:
   annotations:
     description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
+    features.operators.openshift.io/disconnected: "true"
+    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/proxy-aware: "false"
+    features.operators.openshift.io/cnf: "false"
+    features.operators.openshift.io/cni: "false"
+    features.operators.openshift.io/csi: "false"
+    features.operators.openshift.io/tls-profiles: "false"
+    features.operators.openshift.io/token-auth-aws: "false"
+    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-gcp: "false"
     operatorframework.io/suggested-namespace: openshift-keda
     operatorframework.io/cluster-monitoring: "true"
     operators.openshift.io/valid-subscription: '["OpenShift Kubernetes Engine", "OpenShift Container Platform", "OpenShift Platform Plus"]'
@@ -57,8 +69,8 @@ CMA_PATCH_EOF
 jq_filter='del(.spec.icon) | del(.spec.links) | del(.spec.maintainers) | '
 # change all strings with value "keda-olm-operator" to "custom-metrics-autoscaler-operator"
 jq_filter="$jq_filter"'walk(if type == "string" and . == "keda-olm-operator" then .="custom-metrics-autoscaler-operator" else . end) | '
-# in CMA, we use olm.skipRange instead of replaces
-jq_filter="$jq_filter"'del(.spec.replaces) | '
+# change keda -> CMA in replaces
+jq_filter="$jq_filter"'.spec.replaces |= sub("keda.v";"custom-metrics-autoscaler.v") | '
 # update the json example CR so that it shows you how to install to "openshift-keda" namespace instead of "keda" namespace
 jq_filter="$jq_filter"'.metadata.annotations."alm-examples" |= sub("\"namespace\": \"keda\""; "\"namespace\": \"openshift-keda\"") | '
 # set the command to bash instead of /manager
