@@ -118,6 +118,16 @@ metadata:
     containerImage: ghcr.io/kedacore/keda-olm-operator:2.11.2
     createdAt: "2023-09-11T23:35:30Z"
     description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
+    features.operators.openshift.io/cnf: "false"
+    features.operators.openshift.io/cni: "false"
+    features.operators.openshift.io/csi: "false"
+    features.operators.openshift.io/disconnected: "true"
+    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/proxy-aware: "false"
+    features.operators.openshift.io/tls-profiles: "false"
+    features.operators.openshift.io/token-auth-aws: "false"
+    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-gcp: "false"
     olm.skipRange: '>=2.7.1 <2.11.2'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-keda
@@ -639,5 +649,6 @@ spec:
   minKubeVersion: 1.23.0
   provider:
     name: Red Hat
+  replaces: custom-metrics-autoscaler.v2.10.1
   selector: {}
   version: 2.11.2
