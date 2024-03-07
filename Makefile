@@ -55,21 +55,6 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-.PHONY: cma-check-all-csv
-cma-check-all-csv: build-testutil ## Verify that CMA CSV files look right
-	hack/cma-check-all-csv.sh
-
-.PHONY: build-testutil
-build-testutil: bin/yaml2json bin/json2yaml ## Build utilities needed by tests
-
-# utilities needed by tests
-bin/yaml2json: cmd/testutil/yaml2json/yaml2json.go
-	mkdir -p bin
-	go build $(GOGCFLAGS) -ldflags "$(LD_FLAGS)" -o bin/ "github.com/kedacore/keda-olm-operator/cmd/testutil/yaml2json"
-bin/json2yaml: cmd/testutil/json2yaml/json2yaml.go
-	mkdir -p bin
-	go build $(GOGCFLAGS) -ldflags "$(LD_FLAGS)" -o bin/ "github.com/kedacore/keda-olm-operator/cmd/testutil/json2yaml"
-
 test-audit: manifests generate fmt vet envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing audit flags"
 
@@ -77,7 +62,7 @@ test-functionality: manifests generate fmt vet envtest ## Test functionality.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing functionality"
 
 test-deployment: manifests generate fmt vet envtest ## Test OLM deployment.
-	kubectl create namespace olm --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create namespace olm --dry-run=client -o yaml | kubectl apply --server-side -f -
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type deployment -ginkgo.focus "Deploying KedaController manifest"
 
 test: manifests generate fmt vet envtest
@@ -107,7 +92,7 @@ sign-images: ## Sign KEDA images published on GitHub Container Registry
 ##@ Deployment
 
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+	$(KUSTOMIZE) build config/crd | kubectl apply --server-side -f -
 
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | kubectl delete -f -
@@ -117,7 +102,7 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	$(KUSTOMIZE) edit set image ghcr.io/kedacore/keda-olm-operator=${IMAGE_CONTROLLER}
 	cd config/default && \
     $(KUSTOMIZE) edit add label -f app.kubernetes.io/version:${VERSION}
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
+	$(KUSTOMIZE) build config/default | kubectl apply --server-side -f -
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | kubectl delete -f -
@@ -158,7 +143,8 @@ golangci:	## Run golangci against code.
 BUNDLE = $(IMAGE_REGISTRY)/$(IMAGE_REPO)/keda-olm-operator-bundle:$(VERSION)
 INDEX = $(IMAGE_REGISTRY)/$(IMAGE_REPO)/keda-olm-operator-index:$(VERSION)
 # Options for 'bundle-build'
-DEFAULT_CHANNEL=alpha
+DEFAULT_CHANNEL?=stable
+CHANNELS?=stable
 
 ifneq ($(origin CHANNELS), undefined)
 BUNDLE_CHANNELS := --channels=$(CHANNELS)
@@ -205,7 +191,7 @@ index-push:
 
 .PHONY: deploy-olm	## Deploy bundle. -- build & bundle to update if changes were made to code
 deploy-olm: build bundle docker-build docker-push bundle-build bundle-push index-build index-push
-	kubectl create namespace keda --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create namespace keda --dry-run=client -o yaml | kubectl apply --server-side -f -
 	operator-sdk run bundle ${BUNDLE} --namespace keda
 
 .PHONY: deploy-olm-testing

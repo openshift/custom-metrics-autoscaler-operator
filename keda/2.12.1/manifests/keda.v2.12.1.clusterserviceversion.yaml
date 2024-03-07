@@ -569,9 +569,7 @@ spec:
           - list
         serviceAccountName: keda-olm-operator
       deployments:
-      - label:
-          app.kubernetes.io/part-of: keda-olm-operator
-        name: keda-olm-operator
+      - name: keda-olm-operator
         spec:
           replicas: 1
           selector:
@@ -598,7 +596,7 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.annotations['olm.targetNamespaces']
-                image: ghcr.io/kedacore/keda-olm-operator:main
+                image: ghcr.io/kedacore/keda-olm-operator:2.12.1
                 imagePullPolicy: Always
                 livenessProbe:
                   httpGet:

@@ -1,7 +1,0 @@
-approvers:
-  - joelsmith
-  - aravindhp
-  - jkyros
-
-# Bugzilla fields:
-component: Pod Autoscaler
