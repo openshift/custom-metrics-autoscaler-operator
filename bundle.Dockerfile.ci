@@ -1,7 +1,7 @@
 # This enables us to build a release-ish image in CI. It won't be exactly the same as what we release, 
 # but it should approximate it well enough for now that it gives us some signal. 
 
-FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.20-openshift-4.15 as builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.22-openshift-4.17 as builder
 
 # we need to build some things so we need the sources
 COPY . . 
