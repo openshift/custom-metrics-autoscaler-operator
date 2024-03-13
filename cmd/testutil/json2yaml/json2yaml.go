@@ -2,8 +2,9 @@ package main
 
 import (
 	"bytes"
-	yamlv2 "gopkg.in/yaml.v2"
 	"os"
+
+	yamlv2 "gopkg.in/yaml.v2"
 	"sigs.k8s.io/yaml"
 )
 
@@ -18,11 +19,14 @@ func main() {
 		defer r.Close()
 	}
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(r)
+	_, err = buf.ReadFrom(r)
+	if err != nil {
+		panic(err)
+	}
 	yamlv2.FutureLineWrap()
 	yamlPayload, err := yaml.JSONToYAML(buf.Bytes())
 	if err != nil {
 		panic(err)
 	}
-	os.Stdout.Write(yamlPayload[:])
+	os.Stdout.Write(yamlPayload)
 }

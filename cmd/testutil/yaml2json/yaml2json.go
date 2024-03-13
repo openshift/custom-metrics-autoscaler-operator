@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+
 	"sigs.k8s.io/yaml"
 )
 
@@ -17,10 +18,13 @@ func main() {
 		defer r.Close()
 	}
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(r)
+	_, err = buf.ReadFrom(r)
+	if err != nil {
+		panic(err)
+	}
 	jsonPayload, err := yaml.YAMLToJSON(buf.Bytes())
 	if err != nil {
 		panic(err)
 	}
-	os.Stdout.Write(jsonPayload[:])
+	os.Stdout.Write(jsonPayload)
 }

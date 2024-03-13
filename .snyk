@@ -2,3 +2,5 @@ exclude:
   global:
     - "vendor/**"
     - "**/*_test.go"
+    - cmd/testutil/json2yaml/json2yaml.go
+    - cmd/testutil/yaml2json/yaml2json.go
