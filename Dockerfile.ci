@@ -21,7 +21,7 @@ COPY $REMOTE_SOURCES $REMOTE_SOURCES_DIR/cma-operator/app
 WORKDIR $REMOTE_SOURCES_DIR/cma-operator/app
 
 # 4. HACK: osbs feeds in these other sources, there isn't a CI equivalent, so do it here as part of the multistage build
-RUN git clone https://github.com/kubernetes-sigs/controller-tools $REMOTE_SOURCES_DIR/controller-tools/app && touch $REMOTE_SOURCES_DIR/controller-tools/cachito.env
+RUN git clone -b release-0.11 https://github.com/kubernetes-sigs/controller-tools $REMOTE_SOURCES_DIR/controller-tools/app && touch $REMOTE_SOURCES_DIR/controller-tools/cachito.env
 RUN git clone https://github.com/golang/mock $REMOTE_SOURCES_DIR/mockgen/app && touch $REMOTE_SOURCES_DIR/mockgen/cachito.env
 RUN git clone https://github.com/protocolbuffers/protobuf $REMOTE_SOURCES_DIR/protobuf/app && touch $REMOTE_SOURCES_DIR/protobuf/cachito.env && rm -rf ./$REMOTE_SOURCES_DIR/protobuf/app/examples
 RUN touch ../cachito.env
