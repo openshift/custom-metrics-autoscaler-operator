@@ -30,7 +30,7 @@ metadata:
   annotations:
     description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
     features.operators.openshift.io/disconnected: "true"
-    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/fips-compliant: "true"
     features.operators.openshift.io/proxy-aware: "false"
     features.operators.openshift.io/cnf: "false"
     features.operators.openshift.io/cni: "false"
