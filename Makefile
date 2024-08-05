@@ -17,7 +17,7 @@ DATE        = $(shell date -u +"%Y.%m.%d.%H.%M.%S")
 
 GO_BUILD_VARS= GO111MODULE=on CGO_ENABLED=$(CGO) GOOS=$(TARGET_OS) GOARCH=$(ARCH)
 
-COSIGN_FLAGS ?= -a GIT_HASH=${GIT_COMMIT} -a GIT_VERSION=${VERSION} -a BUILD_DATE=${DATE}
+COSIGN_FLAGS ?= -y -a GIT_HASH=${GIT_COMMIT} -a GIT_VERSION=${VERSION} -a BUILD_DATE=${DATE}
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -26,8 +26,15 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# if we're running on a platform where the bundle is going to be deploying into a restricted namespace,
+# allow that to be specified so we can supply the proper args
+RESTRICTED ?= false
+ifeq ($(RESTRICTED),true)
+BUNDLE_RUN_OPTS= --security-context-config restricted
+endif
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.26
+ENVTEST_K8S_VERSION = 1.29.3
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # This is a requirement for 'setup-envtest.sh' in the test target.
@@ -54,21 +61,6 @@ fmt: ## Run go fmt against code.
 
 vet: ## Run go vet against code.
 	go vet ./...
-
-.PHONY: cma-check-all-csv
-cma-check-all-csv: build-testutil ## Verify that CMA CSV files look right
-	hack/cma-check-all-csv.sh
-
-.PHONY: build-testutil
-build-testutil: bin/yaml2json bin/json2yaml ## Build utilities needed by tests
-
-# utilities needed by tests
-bin/yaml2json: cmd/testutil/yaml2json/yaml2json.go
-	mkdir -p bin
-	go build $(GOGCFLAGS) -ldflags "$(LD_FLAGS)" -o bin/ "github.com/kedacore/keda-olm-operator/cmd/testutil/yaml2json"
-bin/json2yaml: cmd/testutil/json2yaml/json2yaml.go
-	mkdir -p bin
-	go build $(GOGCFLAGS) -ldflags "$(LD_FLAGS)" -o bin/ "github.com/kedacore/keda-olm-operator/cmd/testutil/json2yaml"
 
 test-audit: manifests generate fmt vet envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing audit flags"
@@ -207,7 +199,7 @@ index-push:
 .PHONY: deploy-olm	## Deploy bundle. -- build & bundle to update if changes were made to code
 deploy-olm: build bundle docker-build docker-push bundle-build bundle-push index-build index-push
 	kubectl create namespace keda --dry-run=client -o yaml | kubectl apply --server-side -f -
-	operator-sdk run bundle ${BUNDLE} --namespace keda
+	operator-sdk run bundle ${BUNDLE} --namespace keda $(BUNDLE_RUN_OPTS)
 
 .PHONY: deploy-olm-testing
 deploy-olm-testing:

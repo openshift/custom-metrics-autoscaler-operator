@@ -6,19 +6,19 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app.kubernetes.io/part-of: keda-operator
-    app.kubernetes.io/version: 2.14.1
-  name: clustertriggerauthentications.keda.sh
+    app.kubernetes.io/version: 2.14.0
+  name: triggerauthentications.keda.sh
 spec:
   group: keda.sh
   names:
-    kind: ClusterTriggerAuthentication
-    listKind: ClusterTriggerAuthenticationList
-    plural: clustertriggerauthentications
+    kind: TriggerAuthentication
+    listKind: TriggerAuthenticationList
+    plural: triggerauthentications
     shortNames:
-    - cta
-    - clustertriggerauth
-    singular: clustertriggerauthentication
-  scope: Cluster
+    - ta
+    - triggerauth
+    singular: triggerauthentication
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.podIdentity.provider
@@ -44,8 +44,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ClusterTriggerAuthentication defines how a trigger can authenticate
-          globally
+        description: TriggerAuthentication defines how a trigger can authenticate
         properties:
           apiVersion:
             description: |-

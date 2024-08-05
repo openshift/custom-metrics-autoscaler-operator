@@ -6,7 +6,7 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.14.0
   labels:
     app.kubernetes.io/part-of: keda-operator
-    app.kubernetes.io/version: 2.14.1
+    app.kubernetes.io/version: 2.14.0
   name: clustertriggerauthentications.keda.sh
 spec:
   group: keda.sh
