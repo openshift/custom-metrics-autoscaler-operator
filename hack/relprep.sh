@@ -13,6 +13,18 @@ set -e
 # these components k8s.io/<item> are versioned for each k8s release and should match the version of k8s used in KEDA for a given release
 kube_components="api apimachinery apiextensions-apiserver apiserver client-go component-base kube-aggregator"
 
+match_keda_version_deps="sigs.k8s.io/controller-runtime sigs.k8s.io/controller-runtime/tools/setup-envtest sigs.k8s.io/controller-tools"
+
+echo "Fetching sample CRs for KEDA v$ver"
+curl -s "https://raw.githubusercontent.com/kedacore/keda/v${ver}/config/samples/kustomization.yaml" > config/samples/kustomization.yaml
+for cr in $(sed -n '/^resources:$/,/^[^-]/ { s#[^0-9a-zA-Z_. -]##g; s#^- ##p}' config/samples/kustomization.yaml); do
+  curl -s "https://raw.githubusercontent.com/kedacore/keda/v${ver}/config/samples/$cr" > "config/samples/$cr"
+done
+
+echo "Updating list of sample CRs to include KedaControllers"
+# Since the above fetch of config/samples/kustomization.yaml reverts changes specific to this repo, re-add here
+sed -i $'/^resources:$/ a\\\n- keda_v1alpha1_kedacontroller.yaml' config/samples/kustomization.yaml
+
 echo "Fetching go.mod for KEDA v$ver"
 keda_gomod="$(curl -s "https://raw.githubusercontent.com/kedacore/keda/v${ver}/go.mod")"
 
@@ -36,15 +48,15 @@ sed -i "s/^go  *[1-9][0-9]*\.[0-9][0-9]*$/go $gover/" go.mod
 echo "Updatign go version in github workflows"
 while read f; do
   echo " $f"
-  sed -i "s/^\\(  *go-version: \\) *'?[1-9][0-9]*\\.[0-9][0-9]*'?\$/\\1'${gover}'/" "$f"
-done < <(git grep -Pl "^  *go-version:  *'?[1-9][0-9]*\\.[0-9][0-9]*'?\$" .github/workflows/)
+  sed -i "s/^\\(  *go-version: \\) *'[1-9][0-9]*\\.[0-9][0-9]*'\$/\\1'${gover}'/" "$f"
+done < <(git grep -Pl "^  *go-version:  *'[1-9][0-9]*\\.[0-9][0-9]*'\$" .github/workflows/)
 
 echo
 echo 'Running go mod tidy (pass 1)'
 go mod tidy
 
-echo "Getting latest tag for keda-tools for version $gover"
-bttag=$(skopeo list-tags docker://ghcr.io/kedacore/keda-tools | jq -r '.Tags|.[]' | sort --version-sort -r | head -1)
+echo "Getting tag for keda-tools used to build KEDA version $ver"
+bttag=$(curl -s "https://raw.githubusercontent.com/kedacore/keda/v${ver}/Dockerfile" | sed -n 's#^FROM.* ghcr.io/kedacore/keda-tools:\([0-9][0-9.]*\) AS builder$#\1#p;T;q')
 
 echo "Updating keda-tools tag to $bttag"
 while read f; do
@@ -101,6 +113,17 @@ for i in $kube_components; do
     updated_mods["k8s.io/$i"]=1
 done
 
+for i in $match_keda_version_deps; do
+    echo -n checking upstream version of $i .....
+    if ! modver=$(echo "$keda_gomod" | grep -Po '(?<=^\t'"$i"' )v[0-9]*\.[0-9]*\.[0-9]*(-[0-9]*(-[0-9a-e]*)?)?$'); then
+      echo "  Unable to find $i in https://raw.githubusercontent.com/kedacore/keda/v${ver}/go.mod .  Exiting!"
+      exit 1
+    fi
+    echo "  got version $modver"
+    to_update+=("$i@$modver")
+    updated_mods["$i"]=1
+done
+
 # hack: force version of openshift API module based upon k8s->openshift version skew (e.g. 1.27 -> 4.14)
 openshift_branch="release-4.$(($(echo $k8sver | sed 's/v0\.\([0-9]*\)\.[0-9]*$/\1/')-13))"
 to_update+=("github.com/openshift/api@$openshift_branch")
@@ -142,6 +165,9 @@ if ! diff -u <(grep -vE "$ignorefields" < $bcsv) <(grep -vE "$ignorefields" < $m
   exit 1
 fi
 
+echo "Updating K8s version for envtest components"
+sed -i "s#ENVTEST_K8S_VERSION *= *[0-9.]*#ENVTEST_K8S_VERSION = 1.${k8sver/v[0-9]./}#" Makefile
+
 echo Validating bundle
 operator-sdk bundle validate ./keda/${ver}
 echo
@@ -151,7 +177,7 @@ echo "To Do:"
 echo " 1. Validate changes made by this script and 'git add' them"
 echo " 2. Verify the code builds and works with vendor & toolchain update. Make any necessary changes to match changed APIs"
 echo " 3. Test that the bundle is deployable and functional on an OpenShift cluster:"
-echo "      make VERSION=${ver} IMAGE_REGISTRY=quay.io IMAGE_REPO=example_quay_user deploy-olm-testing"
+echo "      make VERSION=${ver} IMAGE_REGISTRY=quay.io IMAGE_REPO=example_quay_user RESTRICTED=true deploy-olm-testing"
 echo " 4. Test that the bundle is deployable and functional on a Kubernetes cluster:"
 echo "   a. Install OLM"
 echo "      OLM_VERSION=$(curl -s https://api.github.com/repos/operator-framework/operator-lifecycle-manager/releases/latest | jq -r .tag_name)"

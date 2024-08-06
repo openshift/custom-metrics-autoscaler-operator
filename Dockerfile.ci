@@ -1,7 +1,7 @@
 #@follow_tag(registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.20)
 #FROM registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.20.5-202307171904.el8.g844e652 AS builder
 # 1. HACK: package channels don't refresh on the cee image if we're running in CI, so use the CI builder instead of the cee one
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.21-openshift-4.16 as builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.22-openshift-4.17 as builder
 
 # 2. HACK: openshift CI doesn't support ENV in image builds, but it does support ARG, so make these ARGs
 ARG CI_UPSTREAM_VERSION_SANITIZED=main
@@ -21,7 +21,7 @@ COPY $REMOTE_SOURCES $REMOTE_SOURCES_DIR/cma-operator/app
 WORKDIR $REMOTE_SOURCES_DIR/cma-operator/app
 
 # 4. HACK: osbs feeds in these other sources, there isn't a CI equivalent, so do it here as part of the multistage build
-RUN git clone -b release-0.11 https://github.com/kubernetes-sigs/controller-tools $REMOTE_SOURCES_DIR/controller-tools/app && touch $REMOTE_SOURCES_DIR/controller-tools/cachito.env
+RUN git clone -b release-0.15 https://github.com/kubernetes-sigs/controller-tools $REMOTE_SOURCES_DIR/controller-tools/app && touch $REMOTE_SOURCES_DIR/controller-tools/cachito.env
 RUN git clone https://github.com/golang/mock $REMOTE_SOURCES_DIR/mockgen/app && touch $REMOTE_SOURCES_DIR/mockgen/cachito.env
 RUN git clone https://github.com/protocolbuffers/protobuf $REMOTE_SOURCES_DIR/protobuf/app && touch $REMOTE_SOURCES_DIR/protobuf/cachito.env && rm -rf ./$REMOTE_SOURCES_DIR/protobuf/app/examples
 RUN touch ../cachito.env
