@@ -1,24 +1,24 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.14.0
   labels:
-    app.kubernetes.io/part-of: keda-olm-operator
-    app.kubernetes.io/version: main
-  name: triggerauthentications.keda.sh
+    app.kubernetes.io/part-of: keda-operator
+    app.kubernetes.io/version: 2.15.0
+  name: clustertriggerauthentications.keda.sh
 spec:
   group: keda.sh
   names:
-    kind: TriggerAuthentication
-    listKind: TriggerAuthenticationList
-    plural: triggerauthentications
+    kind: ClusterTriggerAuthentication
+    listKind: ClusterTriggerAuthenticationList
+    plural: clustertriggerauthentications
     shortNames:
-    - ta
-    - triggerauth
-    singular: triggerauthentication
-  scope: Namespaced
+    - cta
+    - clustertriggerauth
+    singular: clustertriggerauthentication
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.podIdentity.provider
@@ -44,7 +44,8 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: TriggerAuthentication defines how a trigger can authenticate
+        description: ClusterTriggerAuthentication defines how a trigger can authenticate
+          globally
         properties:
           apiVersion:
             description: |-
@@ -565,9 +566,3 @@ spec:
     storage: true
     subresources:
       status: {}
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: null
-  storedVersions: null
