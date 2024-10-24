@@ -28,6 +28,7 @@ cd "$script_dir"/..
 read -r -d '' cma_patch <<CMA_PATCH_EOF
 metadata:
   annotations:
+    console.openshift.io/operator-monitoring-default: "true"
     description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based upon KEDA
     features.operators.openshift.io/disconnected: "true"
     features.operators.openshift.io/fips-compliant: "true"
