@@ -115,6 +115,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Cloud Provider
     certified: "false"
+    console.openshift.io/operator-monitoring-default: "true"
     containerImage: ghcr.io/kedacore/keda-olm-operator:2.12.1
     createdAt: "2023-09-11T23:35:30Z"
     description: Custom Metrics Autoscaler Operator, an event-driven autoscaler based
