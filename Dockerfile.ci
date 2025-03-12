@@ -1,7 +1,5 @@
-#@follow_tag(registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:rhel_8_golang_1.20)
-#FROM registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.20.5-202307171904.el8.g844e652 AS builder
 # 1. HACK: package channels don't refresh on the cee image if we're running in CI, so use the CI builder instead of the cee one
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.22-openshift-4.17 as builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.23-openshift-4.19 as builder
 
 # 2. HACK: openshift CI doesn't support ENV in image builds, but it does support ARG, so make these ARGs
 ARG CI_UPSTREAM_VERSION_SANITIZED=main
