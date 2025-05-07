@@ -4,11 +4,17 @@ This is a small tool that manages binaries for envtest. It can be used to
 download new binaries, list currently installed and available ones, and
 clean up versions.
 
-To use it, just go-install it on 1.19+ (it's a separate, self-contained
+To use it, just go-install it with Golang 1.22+ (it's a separate, self-contained
 module):
 
 ```shell
 go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+```
+
+If you are using Golang 1.20 or 1.21, use the `release-0.17` branch instead:
+
+```shell
+go install sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.17
 ```
 
 For full documentation, run it with the `--help` flag, but here are some
@@ -41,13 +47,12 @@ setup-envtest use -i --use-env
 # sideload a pre-downloaded tarball as Kubernetes 1.16.2 into our store
 setup-envtest sideload 1.16.2 < downloaded-envtest.tar.gz
 
-# If --use-deprecated-gcs is set to false envtest binaries are downloaded from: 
+# Per default envtest binaries are downloaded from: 
 # https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/master/envtest-releases.yaml
 # To download from a custom index use the following:
-# Note: In controller-runtime v0.19.0 --use-deprecated-gcs will default to false.
-setup-envtest use --use-deprecated-gcs=false --index https://custom.com/envtest-releases.yaml
+setup-envtest use --index https://custom.com/envtest-releases.yaml
 
-# To download from the kubebuilder-tools GCS bucket: (default behavior until v0.18)
+# To download from the kubebuilder-tools GCS bucket: (default behavior before v0.18)
 # Note: This is a Google-owned bucket and it might be shutdown at any time
 # see: https://github.com/kubernetes/k8s.io/issues/2647#event-12439345373
 # Note: This flag will also be removed soon.
