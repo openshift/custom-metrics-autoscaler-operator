@@ -57,7 +57,8 @@ import (
 const (
 
 	// Allowed Name of KedaController resource
-	kedaControllerResourceName = "keda"
+	kedaControllerResourceName      = "keda"
+	kedaDefaultControllerAnnotation = "keda-olm-operator/create-default-controller"
 
 	grpcClientCertsSecretName     = "kedaorg-certs"
 	caBundleConfigMapName         = "keda-ocp-cabundle"
@@ -115,10 +116,89 @@ func (r *KedaControllerReconciler) SetupWithManager(mgr ctrl.Manager, kedaContro
 		}
 	}
 
+	go r.ensureKedaController(logger)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kedav1alpha1.KedaController{}).
 		Owns(&appsv1.Deployment{}).
 		Complete(r)
+}
+
+func (r *KedaControllerReconciler) ensureKedaController(logger logr.Logger) {
+	// Wait for cache to sync before retrieval
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if !r.mgr.GetCache().WaitForCacheSync(ctx) {
+		logger.Error(ctx.Err(), "Cache sync wait timeout")
+		return
+	}
+
+	// Fetch operator namespace
+	kedaNamespace := &corev1.Namespace{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: r.resourceNamespace}, kedaNamespace)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Error(err, "Keda namespace not found.")
+			return
+		}
+		logger.Error(err, "Failed to get Keda namespace to check annotation.")
+		return
+	}
+
+	// Get annotations from namespace
+	annotations := kedaNamespace.GetAnnotations()
+
+	// If operator namespace is not annotated, annotate and create a default KedaController if one doesn't exist
+	if _, ok := annotations[kedaDefaultControllerAnnotation]; !ok {
+		err = r.Client.Get(ctx, types.NamespacedName{Name: kedaControllerResourceName, Namespace: r.resourceNamespace}, &kedav1alpha1.KedaController{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				logger.Info("KedaController does not exist. Creating default KedaController resource")
+				instance := r.initializeDefaultController()
+				err = r.Client.Create(ctx, instance)
+				if err != nil {
+					logger.Error(err, "Error creating default KedaController")
+					return
+				}
+			} else {
+				logger.Error(err, "Error reading KedaController")
+				return
+			}
+		} else {
+			logger.Info("KedaController already exists")
+		}
+		// Set annotation in operator's namespace
+		kedaNamespaceCopy := kedaNamespace.DeepCopy()
+		annotations = kedaNamespaceCopy.GetAnnotations()
+		if annotations == nil {
+			annotations = make(map[string]string)
+		}
+
+		annotations[kedaDefaultControllerAnnotation] = "true"
+		kedaNamespaceCopy.SetAnnotations(annotations)
+		err = r.Client.Patch(ctx, kedaNamespaceCopy, client.StrategicMergeFrom(kedaNamespace))
+		if err != nil {
+			logger.Error(err, "Error patching namespace with annotation for default KedaController creation")
+			return
+		}
+	}
+}
+
+func (r *KedaControllerReconciler) initializeDefaultController() *kedav1alpha1.KedaController {
+	// Create default controller
+	keda := &kedav1alpha1.KedaController{}
+	keda.APIVersion = "keda.sh/v1alpha1"
+	keda.Kind = "KedaController"
+	keda.Name = kedaControllerResourceName
+	keda.Namespace = r.resourceNamespace
+	keda.Spec.WatchNamespace = ""
+	keda.Spec.Operator.LogLevel = "info"
+	keda.Spec.Operator.LogEncoder = "console"
+	keda.Spec.MetricsServer.LogLevel = "0"
+	keda.Spec.AdmissionWebhooks.LogLevel = "info"
+	keda.Spec.AdmissionWebhooks.LogEncoder = "console"
+
+	return keda
 }
 
 // +kubebuilder:rbac:groups=keda.sh,resources=kedacontrollers;kedacontrollers/finalizers;kedacontrollers/status,verbs="*"
@@ -460,6 +540,14 @@ func (r *KedaControllerReconciler) installController(ctx context.Context, logger
 		transforms = append(transforms, transform.ReplaceKedaOperatorResources(instance.Spec.Operator.Resources, r.Scheme))
 	}
 
+	if instance.Spec.Operator.Volumes != nil {
+		transforms = append(transforms, transform.ReplaceDeploymentVolumes(instance.Spec.Operator.Volumes, r.Scheme))
+	}
+
+	if instance.Spec.Operator.VolumeMounts != nil {
+		transforms = append(transforms, transform.ReplaceDeploymentVolumeMounts(instance.Spec.Operator.VolumeMounts, r.Scheme))
+	}
+
 	// add arbitrary args defined by user
 	for i := range instance.Spec.Operator.Args {
 		i := i
@@ -666,6 +754,14 @@ func (r *KedaControllerReconciler) installMetricsServer(ctx context.Context, log
 
 	if !reflect.DeepEqual(instance.Spec.MetricsServer.AuditConfig, kedav1alpha1.AuditConfig{}) {
 		transforms = auditConfigTransformation(transforms, instance.Spec.MetricsServer.AuditConfig, r.Scheme, logger)
+	}
+
+	if instance.Spec.MetricsServer.Volumes != nil {
+		transforms = append(transforms, transform.ReplaceDeploymentVolumes(instance.Spec.MetricsServer.Volumes, r.Scheme))
+	}
+
+	if instance.Spec.MetricsServer.VolumeMounts != nil {
+		transforms = append(transforms, transform.ReplaceDeploymentVolumeMounts(instance.Spec.MetricsServer.VolumeMounts, r.Scheme))
 	}
 
 	// add arbitrary args defined by user
@@ -892,6 +988,14 @@ func (r *KedaControllerReconciler) installAdmissionWebhooks(ctx context.Context,
 
 	if instance.Spec.AdmissionWebhooks.Resources.Limits != nil || instance.Spec.AdmissionWebhooks.Resources.Requests != nil {
 		transforms = append(transforms, transform.ReplaceAdmissionWebhooksResources(instance.Spec.AdmissionWebhooks.Resources, r.Scheme))
+	}
+
+	if instance.Spec.AdmissionWebhooks.Volumes != nil {
+		transforms = append(transforms, transform.ReplaceDeploymentVolumes(instance.Spec.Operator.Volumes, r.Scheme))
+	}
+
+	if instance.Spec.AdmissionWebhooks.VolumeMounts != nil {
+		transforms = append(transforms, transform.ReplaceDeploymentVolumeMounts(instance.Spec.Operator.VolumeMounts, r.Scheme))
 	}
 
 	// add arbitrary args defined by user
