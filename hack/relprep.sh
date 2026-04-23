@@ -67,7 +67,7 @@ while read f; do
 done < <(git grep -l "ghcr.io/kedacore/keda-tools:[0-9]")
 
 echo "Updating resources from KEDA $ver release"
-wget "https://github.com/kedacore/keda/releases/download/v${ver}/keda-${ver}.yaml" -O resources/keda.yaml
+curl -L "https://github.com/kedacore/keda/releases/download/v${ver}/keda-${ver}.yaml" | sed 's/\r//g' > resources/keda.yaml
 
 echo "Finding previous release version"
 prev=$(ls keda/ | grep -v "^${ver//./\\.}$" | sort --version-sort | tail -1)
@@ -117,7 +117,7 @@ done
 
 for i in $match_keda_version_deps; do
     echo -n checking upstream version of $i .....
-    if ! modver=$(echo "$keda_gomod" | grep -Po '(?<=^\t'"$i"' )v[0-9]*\.[0-9]*\.[0-9]*(-[0-9]*(-[0-9a-e]*)?)?$'); then
+    if ! modver=$(echo "$keda_gomod" | grep -Po '(?<=^\t'"$i"' )v[0-9]*\.[0-9]*\.[0-9]*(-[0-9]*(-[0-9a-f]*)?)?$'); then
       echo "  Unable to find $i in https://raw.githubusercontent.com/kedacore/keda/v${ver}/go.mod .  Exiting!"
       exit 1
     fi
