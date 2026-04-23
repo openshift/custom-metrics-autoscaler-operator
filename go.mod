@@ -16,15 +16,17 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	github.com/open-policy-agent/cert-controller v0.16.0
-	github.com/openshift/api v0.0.0-20260615110019-261e3a0546f3
-	github.com/openshift/controller-runtime-common v0.0.0-20260428152732-64ee174f5e2e
-	github.com/openshift/library-go v0.0.0-20260615113748-bc9d4056464b
-	k8s.io/api v0.36.0
-	k8s.io/apimachinery v0.36.0
-	k8s.io/apiserver v0.36.0
-	k8s.io/client-go v0.36.0
-	k8s.io/kube-aggregator v0.36.0
-	sigs.k8s.io/controller-runtime v0.24.1
+	github.com/openshift/api v0.0.0-20260421211856-fec28cd18ea9
+	gopkg.in/yaml.v2 v2.4.0
+	k8s.io/api v0.35.2
+	k8s.io/apimachinery v0.35.2
+	k8s.io/apiserver v0.35.2
+	k8s.io/client-go v0.35.2
+	k8s.io/kube-aggregator v0.35.2
+	sigs.k8s.io/controller-runtime v0.23.3
+	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20260126224948-cf2e741fe0fd
+	sigs.k8s.io/controller-tools v0.20.0
+	sigs.k8s.io/kustomize/kustomize/v5 v5.8.1
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -118,7 +120,7 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/gotestsum v1.13.0 // indirect
 	k8s.io/apiextensions-apiserver v0.36.0 // indirect
