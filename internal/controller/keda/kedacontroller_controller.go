@@ -87,31 +87,28 @@ const (
 	httpAddonDefaultOperatorImage    = "ghcr.io/kedacore/http-add-on-operator"
 	httpAddonDefaultInterceptorImage = "ghcr.io/kedacore/http-add-on-interceptor"
 	httpAddonDefaultScalerImage      = "ghcr.io/kedacore/http-add-on-scaler"
-
-	kedaTLSCipherListEnvVar = "KEDA_SERVICE_TLS_CIPHER_LIST"
-	kedaTLSMinVersionEnvVar = "KEDA_SERVICE_MIN_TLS_VERSION"
 )
 
 // KedaControllerReconciler reconciles a KedaController object
 type KedaControllerReconciler struct {
 	client.Client
-	Log                           logr.Logger
-	Scheme                        *runtime.Scheme
-	CertDir                       string
-	LeaderElection                bool
-	rotatorStarted                bool
-	mgr                           ctrl.Manager
-	resourcesGeneral              mf.Manifest
-	resourcesController           mf.Manifest
-	resourcesMetrics              mf.Manifest
-	resourcesWebhooks             mf.Manifest
-	resourcesMonitoring           mf.Manifest
-	discoveryClient               *discovery.DiscoveryClient
-	resourceNamespace             string
+	Log                 logr.Logger
+	Scheme              *runtime.Scheme
+	CertDir             string
+	LeaderElection      bool
+	rotatorStarted      bool
+	mgr                 ctrl.Manager
+	resourcesGeneral    mf.Manifest
+	resourcesController mf.Manifest
+	resourcesMetrics    mf.Manifest
+	resourcesWebhooks   mf.Manifest
+	resourcesMonitoring mf.Manifest
+	discoveryClient     *discovery.DiscoveryClient
+	resourceNamespace   string
+
 	resourcesHTTPAddonOperator    mf.Manifest
 	resourcesHTTPAddonInterceptor mf.Manifest
 	resourcesHTTPAddonScaler      mf.Manifest
-	injectTLSEnvVars              bool // true when running on OpenShift; enables TLS env var injection into KEDA deployments
 }
 
 func (r *KedaControllerReconciler) SetupWithManager(mgr ctrl.Manager, kedaControllerResourceNamespace string, logger logr.Logger) error {
@@ -320,8 +317,6 @@ func (r *KedaControllerReconciler) tlsEnvVarTransforms(ctx context.Context, logg
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups=apiregistration.k8s.io,resources=apiservices,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors;podmonitors,verbs=create;delete;get;list;patch;update;watch
-// +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=list
-// +kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups="coordination.k8s.io",resources=leases,verbs="*"
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=create;delete;get;list;patch;update;watch
@@ -427,14 +422,6 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if err := r.installHTTPAddon(ctx, logger, instance, status); err != nil {
 		status.MarkInstallFailed("Not able to install HTTP Add-on")
-		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
-			err = fmt.Errorf("got error: %s and then another: %s", err, statusErr)
-		}
-		return ctrl.Result{}, err
-	}
-
-	if err := r.ensurePrometheusMonitoringRBAC(ctx, logger, instance); err != nil {
-		status.MarkInstallFailed("Not able to ensure Prometheus monitoring RBAC")
 		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
 			err = fmt.Errorf("got error: %s and then another: %s", err, statusErr)
 		}
