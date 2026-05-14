@@ -11,7 +11,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   labels:
     app.kubernetes.io/part-of: keda-operator
     app.kubernetes.io/version: 2.19.0
@@ -63,6 +63,9 @@ spec:
                   kind:
                     description: Kind of the resource being referred to. Defaults
                       to TriggerAuthentication.
+                    enum:
+                    - TriggerAuthentication
+                    - ClusterTriggerAuthentication
                     type: string
                   name:
                     type: string
@@ -184,7 +187,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   labels:
     app.kubernetes.io/part-of: keda-operator
     app.kubernetes.io/version: 2.19.0
@@ -234,6 +237,9 @@ spec:
                   kind:
                     description: Kind of the resource being referred to. Defaults
                       to TriggerAuthentication.
+                    enum:
+                    - TriggerAuthentication
+                    - ClusterTriggerAuthentication
                     type: string
                   name:
                     type: string
@@ -355,7 +361,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   labels:
     app.kubernetes.io/part-of: keda-operator
     app.kubernetes.io/version: 2.19.0
@@ -496,6 +502,11 @@ spec:
                       AuthPodIdentity allows users to select the platform native identity
                       mechanism
                     properties:
+                      externalID:
+                        description: ExternalID sets the External ID to be used when
+                          assuming an identity. This is only applicable when using
+                          AWS pod identity with a RoleArn.
+                        type: string
                       identityAuthorityHost:
                         description: Set identityAuthorityHost to override the default
                           Azure authority host. If this is set, then the IdentityTenantID
@@ -551,6 +562,7 @@ spec:
                       - name
                       - parameter
                       type: object
+                    minItems: 1
                     type: array
                 required:
                 - secrets
@@ -606,6 +618,11 @@ spec:
                       AuthPodIdentity allows users to select the platform native identity
                       mechanism
                     properties:
+                      externalID:
+                        description: ExternalID sets the External ID to be used when
+                          assuming an identity. This is only applicable when using
+                          AWS pod identity with a RoleArn.
+                        type: string
                       identityAuthorityHost:
                         description: Set identityAuthorityHost to override the default
                           Azure authority host. If this is set, then the IdentityTenantID
@@ -655,6 +672,7 @@ spec:
                       - name
                       - parameter
                       type: object
+                    minItems: 1
                     type: array
                   vaultUri:
                     type: string
@@ -745,6 +763,11 @@ spec:
                       AuthPodIdentity allows users to select the platform native identity
                       mechanism
                     properties:
+                      externalID:
+                        description: ExternalID sets the External ID to be used when
+                          assuming an identity. This is only applicable when using
+                          AWS pod identity with a RoleArn.
+                        type: string
                       identityAuthorityHost:
                         description: Set identityAuthorityHost to override the default
                           Azure authority host. If this is set, then the IdentityTenantID
@@ -794,6 +817,7 @@ spec:
                       - id
                       - parameter
                       type: object
+                    minItems: 1
                     type: array
                 required:
                 - secrets
@@ -807,6 +831,9 @@ spec:
                   authentication:
                     description: VaultAuthentication contains the list of Hashicorp
                       Vault authentication methods
+                    enum:
+                    - token
+                    - kubernetes
                     type: string
                   credential:
                     description: Credential defines the Hashicorp Vault credentials
@@ -855,12 +882,18 @@ spec:
                           type: object
                         type:
                           description: VaultSecretType defines the type of vault secret
+                          enum:
+                          - ""
+                          - secretV2
+                          - secret
+                          - pki
                           type: string
                       required:
                       - key
                       - parameter
                       - path
                       type: object
+                    minItems: 1
                     type: array
                 required:
                 - address
@@ -872,6 +905,11 @@ spec:
                   AuthPodIdentity allows users to select the platform native identity
                   mechanism
                 properties:
+                  externalID:
+                    description: ExternalID sets the External ID to be used when assuming
+                      an identity. This is only applicable when using AWS pod identity
+                      with a RoleArn.
+                    type: string
                   identityAuthorityHost:
                     description: Set identityAuthorityHost to override the default
                       Azure authority host. If this is set, then the IdentityTenantID
@@ -947,7 +985,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   labels:
     app.kubernetes.io/part-of: keda-operator
     app.kubernetes.io/version: 2.19.0
@@ -1017,6 +1055,7 @@ spec:
                 type: string
               failedJobsHistoryLimit:
                 format: int32
+                minimum: 0
                 type: integer
               jobTargetRef:
                 description: JobSpec describes how the job execution will look like.
@@ -9903,22 +9942,35 @@ spec:
                 type: object
               maxReplicaCount:
                 format: int32
+                minimum: 1
                 type: integer
               minReplicaCount:
                 format: int32
+                minimum: 0
                 type: integer
               pollingInterval:
                 format: int32
+                minimum: 1
                 type: integer
               rollout:
                 description: Rollout defines the strategy for job rollouts
                 properties:
                   propagationPolicy:
+                    enum:
+                    - foreground
+                    - background
                     type: string
                   strategy:
+                    enum:
+                    - gradual
+                    - immediate
                     type: string
                 type: object
               rolloutStrategy:
+                description: 'Deprecated: Use Rollout.Strategy instead (see https://github.com/kedacore/keda/issues/3596).'
+                enum:
+                - gradual
+                - immediate
                 type: string
               scalingStrategy:
                 description: ScalingStrategy defines the strategy of Scaling
@@ -9929,16 +9981,26 @@ spec:
                   customScalingRunningJobPercentage:
                     type: string
                   multipleScalersCalculation:
+                    enum:
+                    - min
+                    - avg
+                    - sum
+                    - max
                     type: string
                   pendingPodConditions:
                     items:
                       type: string
                     type: array
                   strategy:
+                    enum:
+                    - custom
+                    - accurate
+                    - eager
                     type: string
                 type: object
               successfulJobsHistoryLimit:
                 format: int32
+                minimum: 0
                 type: integer
               triggers:
                 items:
@@ -9952,6 +10014,9 @@ spec:
                         kind:
                           description: Kind of the resource being referred to. Defaults
                             to TriggerAuthentication.
+                          enum:
+                          - TriggerAuthentication
+                          - ClusterTriggerAuthentication
                           type: string
                         name:
                           type: string
@@ -9965,6 +10030,7 @@ spec:
                     name:
                       type: string
                     type:
+                      minLength: 1
                       type: string
                     useCachedMetrics:
                       type: boolean
@@ -9972,6 +10038,7 @@ spec:
                   - metadata
                   - type
                   type: object
+                minItems: 1
                 type: array
             required:
             - jobTargetRef
@@ -10037,7 +10104,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   labels:
     app.kubernetes.io/part-of: keda-operator
     app.kubernetes.io/version: 2.19.0
@@ -10305,6 +10372,7 @@ spec:
                 type: object
               cooldownPeriod:
                 format: int32
+                minimum: 0
                 type: integer
               fallback:
                 description: Fallback is the spec for fallback options
@@ -10319,9 +10387,11 @@ spec:
                     type: string
                   failureThreshold:
                     format: int32
+                    minimum: 0
                     type: integer
                   replicas:
                     format: int32
+                    minimum: 0
                     type: integer
                 required:
                 - failureThreshold
@@ -10329,18 +10399,23 @@ spec:
                 type: object
               idleReplicaCount:
                 format: int32
+                minimum: 0
                 type: integer
               initialCooldownPeriod:
                 format: int32
+                minimum: 0
                 type: integer
               maxReplicaCount:
                 format: int32
+                minimum: 1
                 type: integer
               minReplicaCount:
                 format: int32
+                minimum: 0
                 type: integer
               pollingInterval:
                 format: int32
+                minimum: 1
                 type: integer
               scaleTargetRef:
                 description: ScaleTarget holds the reference to the scale target Object
@@ -10352,6 +10427,7 @@ spec:
                   kind:
                     type: string
                   name:
+                    minLength: 1
                     type: string
                 required:
                 - name
@@ -10368,6 +10444,9 @@ spec:
                         kind:
                           description: Kind of the resource being referred to. Defaults
                             to TriggerAuthentication.
+                          enum:
+                          - TriggerAuthentication
+                          - ClusterTriggerAuthentication
                           type: string
                         name:
                           type: string
@@ -10386,6 +10465,7 @@ spec:
                     name:
                       type: string
                     type:
+                      minLength: 1
                       type: string
                     useCachedMetrics:
                       type: boolean
@@ -10393,11 +10473,16 @@ spec:
                   - metadata
                   - type
                   type: object
+                minItems: 1
                 type: array
             required:
             - scaleTargetRef
             - triggers
             type: object
+            x-kubernetes-validations:
+            - message: minReplicaCount must be less than or equal to maxReplicaCount
+              rule: '!has(self.minReplicaCount) || self.minReplicaCount <= (has(self.maxReplicaCount)
+                ? self.maxReplicaCount : 100)'
           status:
             description: ScaledObjectStatus is the status for a ScaledObject resource
             properties:
@@ -10505,7 +10590,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   labels:
     app.kubernetes.io/part-of: keda-operator
     app.kubernetes.io/version: 2.19.0
@@ -10642,6 +10727,11 @@ spec:
                       AuthPodIdentity allows users to select the platform native identity
                       mechanism
                     properties:
+                      externalID:
+                        description: ExternalID sets the External ID to be used when
+                          assuming an identity. This is only applicable when using
+                          AWS pod identity with a RoleArn.
+                        type: string
                       identityAuthorityHost:
                         description: Set identityAuthorityHost to override the default
                           Azure authority host. If this is set, then the IdentityTenantID
@@ -10697,6 +10787,7 @@ spec:
                       - name
                       - parameter
                       type: object
+                    minItems: 1
                     type: array
                 required:
                 - secrets
@@ -10752,6 +10843,11 @@ spec:
                       AuthPodIdentity allows users to select the platform native identity
                       mechanism
                     properties:
+                      externalID:
+                        description: ExternalID sets the External ID to be used when
+                          assuming an identity. This is only applicable when using
+                          AWS pod identity with a RoleArn.
+                        type: string
                       identityAuthorityHost:
                         description: Set identityAuthorityHost to override the default
                           Azure authority host. If this is set, then the IdentityTenantID
@@ -10801,6 +10897,7 @@ spec:
                       - name
                       - parameter
                       type: object
+                    minItems: 1
                     type: array
                   vaultUri:
                     type: string
@@ -10891,6 +10988,11 @@ spec:
                       AuthPodIdentity allows users to select the platform native identity
                       mechanism
                     properties:
+                      externalID:
+                        description: ExternalID sets the External ID to be used when
+                          assuming an identity. This is only applicable when using
+                          AWS pod identity with a RoleArn.
+                        type: string
                       identityAuthorityHost:
                         description: Set identityAuthorityHost to override the default
                           Azure authority host. If this is set, then the IdentityTenantID
@@ -10940,6 +11042,7 @@ spec:
                       - id
                       - parameter
                       type: object
+                    minItems: 1
                     type: array
                 required:
                 - secrets
@@ -10953,6 +11056,9 @@ spec:
                   authentication:
                     description: VaultAuthentication contains the list of Hashicorp
                       Vault authentication methods
+                    enum:
+                    - token
+                    - kubernetes
                     type: string
                   credential:
                     description: Credential defines the Hashicorp Vault credentials
@@ -11001,12 +11107,18 @@ spec:
                           type: object
                         type:
                           description: VaultSecretType defines the type of vault secret
+                          enum:
+                          - ""
+                          - secretV2
+                          - secret
+                          - pki
                           type: string
                       required:
                       - key
                       - parameter
                       - path
                       type: object
+                    minItems: 1
                     type: array
                 required:
                 - address
@@ -11018,6 +11130,11 @@ spec:
                   AuthPodIdentity allows users to select the platform native identity
                   mechanism
                 properties:
+                  externalID:
+                    description: ExternalID sets the External ID to be used when assuming
+                      an identity. This is only applicable when using AWS pod identity
+                      with a RoleArn.
+                    type: string
                   identityAuthorityHost:
                     description: Set identityAuthorityHost to override the default
                       Azure authority host. If this is set, then the IdentityTenantID
@@ -11227,6 +11344,7 @@ rules:
   - apps
   resources:
   - deployments
+  - replicasets
   - statefulsets
   verbs:
   - list
