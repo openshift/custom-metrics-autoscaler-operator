@@ -1,0 +1,32 @@
+apiVersion: keda.sh/v1alpha1
+kind: KedaController
+metadata:
+  name: keda
+  namespace: keda
+spec:
+  watchNamespace: ""
+
+  operator:
+    logLevel: info
+    logEncoder: console
+    networkEgressAllowAll: "true"
+    args:
+      - "--filepath-auth-root-path=/mnt/auth"
+    volumes:
+      - name: auth-volume
+        secret:
+          secretName: file-auth-creds
+    volumeMounts:
+      - name: auth-volume
+        mountPath: /mnt/auth
+        readOnly: true
+
+  metricsServer:
+    logLevel: "0"
+    networkEgressAllowAll: "true"
+
+  admissionWebhooks:
+    logLevel: info
+    logEncoder: console
+
+  serviceAccount: {}
