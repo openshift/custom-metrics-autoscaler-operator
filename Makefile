@@ -187,8 +187,6 @@ publish: docker-build docker-push ## Build & push docker image with the manager.
 sign-images: ## Sign KEDA images published on GitHub Container Registry
 	cosign sign ${COSIGN_FLAGS} $(IMAGE_CONTROLLER)
 
-##@ E2E Testing
-
 # e2e-cma-setup is called by CI after the CMA operator is installed via OLM
 # (operator-sdk run bundle). It creates the KedaController CR that instructs
 # the operator to deploy the KEDA operand (keda-operator, keda-metrics-apiserver,
