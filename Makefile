@@ -221,6 +221,40 @@ e2e-cma-setup: ## Set up KEDA for CMA e2e tests (called by CI after OLM install)
 	oc wait --for condition=Available -n keda deployment keda-operator --timeout 10m
 	oc get deployment -n keda
 
+##@ E2E Testing
+
+# e2e-cma-setup is called by CI after the CMA operator is installed via OLM
+# (operator-sdk run bundle). It creates the KedaController CR that instructs
+# the operator to deploy the KEDA operand (keda-operator, keda-metrics-apiserver,
+# keda-admission-webhooks).
+#
+# WHY THIS EXISTS / WHY IT LOOKS THE WAY IT DOES:
+#
+# Upstream KEDA (kedacore/keda) deploys the operand directly with kustomize and 
+# does things like patch the keda deployment directly for file-based auth. 
+#
+# We cannot use that kustomize path because CMA deploys the operand through the
+# OLM operator: the operator embeds the base operand manifests and applies
+# configuration at runtime via its transform layer, driven by the KedaController
+# CR spec. There are no kustomize overlays at deploy time.
+#
+# So to exercise things the same file-based auth code path, we need to find equivalent
+# ways to test the functionality via the KedaController.
+#
+# If the operand/upstream changes their file_auth overlay (config/e2e/file_auth/patch_operator.yml
+# in the keda repo), or otherwise changes their e2e setup in a way that has olm operator 
+# ramifications, we may need to adjust this to stay in sync.
+.PHONY: e2e-cma-setup
+e2e-cma-setup: ## Set up KEDA for CMA e2e tests (called by CI after OLM install)
+	oc apply -n keda -f config/e2e/file-auth-secret.yaml
+	oc apply -n keda -f config/e2e/keda_v1alpha1_kedacontroller.yaml
+	sleep 30
+	oc get deployment -n keda
+	oc wait --for condition=Available -n keda deployment keda-admission --timeout 10m
+	oc wait --for condition=Available -n keda deployment keda-metrics-apiserver --timeout 10m
+	oc wait --for condition=Available -n keda deployment keda-operator --timeout 10m
+	oc get deployment -n keda
+
 ##@ Deployment
 
 install: manifests ## Install CRDs into the K8s cluster specified in ~/.kube/config.
