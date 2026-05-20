@@ -219,13 +219,21 @@ func RemoveSeccompProfile(containerName string, scheme *runtime.Scheme, logger l
 			if err := scheme.Convert(u, deploy, nil); err != nil {
 				return err
 			}
+
+			podSC := deploy.Spec.Template.Spec.SecurityContext
+			if podSC != nil && podSC.SeccompProfile != nil && podSC.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
+				podSC.SeccompProfile = nil
+				changed = true
+				logger.Info("Removed SeccompProfile from pod-level SecurityContext")
+			}
+
 			containers := deploy.Spec.Template.Spec.Containers
 			for i, container := range containers {
 				if container.Name == containerName {
 					if container.SecurityContext != nil && container.SecurityContext.SeccompProfile != nil && container.SecurityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
 						containers[i].SecurityContext.SeccompProfile = nil
 						changed = true
-						logger.Info("Removed SeccomProfile from SecurityContext from pod", "container", container.Name)
+						logger.Info("Removed SeccompProfile from container SecurityContext", "container", container.Name)
 						break
 					}
 				}
@@ -1149,7 +1157,7 @@ func AddPodLabels(labels map[string]string, scheme *runtime.Scheme) mf.Transform
 				return err
 			}
 
-			deploy.Spec.Template.ObjectMeta.Labels = updateMap(deploy.Spec.Template.ObjectMeta.Labels, labels)
+			deploy.Spec.Template.Labels = updateMap(deploy.Spec.Template.Labels, labels)
 
 			return scheme.Convert(deploy, u, nil)
 		}
@@ -1456,6 +1464,193 @@ func ReplaceDeploymentVolumeMounts(desiredVolumeMounts []corev1.VolumeMount, sch
 					}
 				}
 			}
+			return scheme.Convert(deploy, u, nil)
+		}
+		return nil
+	}
+}
+
+// ReplaceContainerVolumeMounts merges the given volume mounts into a named container in a Deployment.
+// Existing mounts with the same name are overwritten; new mounts are appended.
+func ReplaceContainerVolumeMounts(desiredVolumeMounts []corev1.VolumeMount, containerName string, scheme *runtime.Scheme) mf.Transformer {
+	return func(u *unstructured.Unstructured) error {
+		if u.GetKind() == "Deployment" {
+			deploy := &appsv1.Deployment{}
+			if err := scheme.Convert(u, deploy, nil); err != nil {
+				return err
+			}
+
+			containers := deploy.Spec.Template.Spec.Containers
+			for i := range containers {
+				if containers[i].Name != containerName {
+					continue
+				}
+				for j, volumeMount := range desiredVolumeMounts {
+					var alreadyExists bool
+					for k, existingVolumeMount := range containers[i].VolumeMounts {
+						if existingVolumeMount.Name == volumeMount.Name {
+							alreadyExists = true
+							containers[i].VolumeMounts[k] = volumeMount
+							break
+						}
+					}
+					if !alreadyExists {
+						containers[i].VolumeMounts = append(containers[i].VolumeMounts, desiredVolumeMounts[j])
+					}
+				}
+			}
+			return scheme.Convert(deploy, u, nil)
+		}
+		return nil
+	}
+}
+
+// ReplaceContainerImage replaces the image for a named container in a Deployment.
+func ReplaceContainerImage(image string, containerName string, scheme *runtime.Scheme) mf.Transformer {
+	return replaceContainerImage(image, containerName, scheme)
+}
+
+// ReplaceContainerResources replaces resource requirements for a named container in a Deployment.
+func ReplaceContainerResources(resources corev1.ResourceRequirements, containerName string, scheme *runtime.Scheme) mf.Transformer {
+	return replaceResources(resources, containerName, scheme)
+}
+
+// ReplaceContainerEnv merges the given environment variables into a named container in a Deployment.
+// Existing variables with the same name are overwritten; new variables are appended.
+func ReplaceContainerEnv(envVars []corev1.EnvVar, containerName string, scheme *runtime.Scheme) mf.Transformer {
+	return func(u *unstructured.Unstructured) error {
+		if u.GetKind() == "Deployment" {
+			deploy := &appsv1.Deployment{}
+			if err := scheme.Convert(u, deploy, nil); err != nil {
+				return err
+			}
+
+			containers := deploy.Spec.Template.Spec.Containers
+			for i, container := range containers {
+				if container.Name == containerName {
+					existing := container.Env
+					for _, newVar := range envVars {
+						found := false
+						for j, existingVar := range existing {
+							if existingVar.Name == newVar.Name {
+								existing[j] = newVar
+								found = true
+								break
+							}
+						}
+						if !found {
+							existing = append(existing, newVar)
+						}
+					}
+					containers[i].Env = existing
+					break
+				}
+			}
+			return scheme.Convert(deploy, u, nil)
+		}
+		return nil
+	}
+}
+
+// ReplaceReplicas sets spec.replicas on a Deployment.
+func ReplaceReplicas(replicas *int32, scheme *runtime.Scheme) mf.Transformer {
+	return func(u *unstructured.Unstructured) error {
+		if u.GetKind() == "Deployment" {
+			deploy := &appsv1.Deployment{}
+			if err := scheme.Convert(u, deploy, nil); err != nil {
+				return err
+			}
+
+			deploy.Spec.Replicas = replicas
+			return scheme.Convert(deploy, u, nil)
+		}
+		return nil
+	}
+}
+
+// ReplaceLogLevel replaces the --zap-log-level arg for a named container in a Deployment.
+func ReplaceLogLevel(logLevel string, containerName string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
+	found := false
+	for _, level := range logLevels {
+		if logLevel == level {
+			found = true
+		}
+	}
+	if !found {
+		if _, err := strconv.ParseUint(logLevel, 10, 64); err == nil {
+			found = true
+		}
+	}
+	if !found {
+		logger.Info("Ignoring specified log level", "container", containerName, "specified", logLevel, "allowed", strings.Join(logLevels, ", ")+" or integer > 0")
+		return func(*unstructured.Unstructured) error { return nil }
+	}
+	return replaceContainerArg(logLevel, LogLevelArg, containerName, scheme, logger)
+}
+
+// ReplaceLogEncoder replaces the --zap-encoder arg for a named container in a Deployment.
+func ReplaceLogEncoder(logEncoder string, containerName string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
+	found := false
+	for _, format := range logEncoders {
+		if logEncoder == format {
+			found = true
+			break
+		}
+	}
+	if !found {
+		logger.Info("Ignoring specified log encoder", "container", containerName, "specified", logEncoder, "allowed", strings.Join(logEncoders, ", "))
+		return func(*unstructured.Unstructured) error { return nil }
+	}
+	return replaceContainerArg(logEncoder, LogEncoderArg, containerName, scheme, logger)
+}
+
+// ReplaceLogTimeEncoding replaces the --zap-time-encoding arg for a named container in a Deployment.
+func ReplaceLogTimeEncoding(logTimeEncoding string, containerName string, scheme *runtime.Scheme, logger logr.Logger) mf.Transformer {
+	found := false
+	for _, timeEncoding := range logTimeEncodings {
+		if logTimeEncoding == timeEncoding {
+			found = true
+			break
+		}
+	}
+	if !found {
+		logger.Info("Ignoring specified log time encoding", "container", containerName, "specified", logTimeEncoding, "allowed", strings.Join(logTimeEncodings, ", "))
+		return func(*unstructured.Unstructured) error { return nil }
+	}
+	return replaceContainerArg(logTimeEncoding, LogTimeEncodingArg, containerName, scheme, logger)
+}
+
+// EnsureEnvVarInAllContainers returns a Transformer that ensures an environment variable
+// with the given name is set to the given value in all containers of all Deployment resources.
+func EnsureEnvVarInAllContainers(name, value string, scheme *runtime.Scheme) mf.Transformer {
+	return func(u *unstructured.Unstructured) error {
+		if u.GetKind() != "Deployment" {
+			return nil
+		}
+		deploy := &appsv1.Deployment{}
+		if err := scheme.Convert(u, deploy, nil); err != nil {
+			return err
+		}
+		changed := false
+		for i := range deploy.Spec.Template.Spec.Containers {
+			c := &deploy.Spec.Template.Spec.Containers[i]
+			found := false
+			for j, env := range c.Env {
+				if env.Name == name {
+					if env.Value != value {
+						c.Env[j].Value = value
+						changed = true
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				c.Env = append(c.Env, corev1.EnvVar{Name: name, Value: value})
+				changed = true
+			}
+		}
+		if changed {
 			return scheme.Convert(deploy, u, nil)
 		}
 		return nil

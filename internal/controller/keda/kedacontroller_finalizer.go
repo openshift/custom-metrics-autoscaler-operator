@@ -15,6 +15,11 @@ const (
 
 // finalizeKedaController is deleting resources for the respective KedaController
 func (r *KedaControllerReconciler) finalizeKedaController(logger logr.Logger) error {
+	if err := r.deleteHTTPAddon(logger); err != nil {
+		logger.Info("error finalized KedaController HTTP Add-on", "error", err)
+		return err
+	}
+
 	if err := r.resourcesGeneral.Delete(); err != nil {
 		logger.Info("error finalized KedaController general", "error", err)
 		return err
@@ -45,7 +50,7 @@ func (r *KedaControllerReconciler) addFinalizer(ctx context.Context, logger logr
 	// Update CR
 	patch := client.MergeFrom(instance.DeepCopy())
 	instance.SetFinalizers(append(instance.GetFinalizers(), kedaControllerFinalizer))
-	err := r.Client.Patch(ctx, instance, patch)
+	err := r.Patch(ctx, instance, patch)
 	if err != nil {
 		logger.Error(err, "Failed to update KedaController with finalizer")
 		return err

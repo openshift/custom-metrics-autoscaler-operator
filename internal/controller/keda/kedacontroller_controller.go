@@ -25,12 +25,15 @@ import (
 	"path"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	mfc "github.com/manifestival/controller-runtime-client"
 	mf "github.com/manifestival/manifestival"
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
+	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	tlspkg "github.com/openshift/controller-runtime-common/pkg/tls"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -41,9 +44,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
@@ -72,24 +78,39 @@ const (
 	auditlogPolicyConfigMap = "keda-metrics-server-audit-policy"
 	auditlogPolicyMountPath = "/var/audit-policy"
 	auditPolicyFile         = "policy.yaml"
+
+	httpAddonContainerOperator    = "operator"
+	httpAddonContainerInterceptor = "interceptor"
+	httpAddonContainerScaler      = "scaler"
+
+	httpAddonDefaultOperatorImage    = "ghcr.io/kedacore/http-add-on-operator"
+	httpAddonDefaultInterceptorImage = "ghcr.io/kedacore/http-add-on-interceptor"
+	httpAddonDefaultScalerImage      = "ghcr.io/kedacore/http-add-on-scaler"
+
+	kedaTLSCipherListEnvVar = "KEDA_SERVICE_TLS_CIPHER_LIST"
+	kedaTLSMinVersionEnvVar = "KEDA_SERVICE_MIN_TLS_VERSION"
 )
 
 // KedaControllerReconciler reconciles a KedaController object
 type KedaControllerReconciler struct {
 	client.Client
-	Log                 logr.Logger
-	Scheme              *runtime.Scheme
-	CertDir             string
-	LeaderElection      bool
-	rotatorStarted      bool
-	mgr                 ctrl.Manager
-	resourcesGeneral    mf.Manifest
-	resourcesController mf.Manifest
-	resourcesMetrics    mf.Manifest
-	resourcesWebhooks   mf.Manifest
-	resourcesMonitoring mf.Manifest
-	discoveryClient     *discovery.DiscoveryClient
-	resourceNamespace   string
+	Log                           logr.Logger
+	Scheme                        *runtime.Scheme
+	CertDir                       string
+	LeaderElection                bool
+	rotatorStarted                bool
+	mgr                           ctrl.Manager
+	resourcesGeneral              mf.Manifest
+	resourcesController           mf.Manifest
+	resourcesMetrics              mf.Manifest
+	resourcesWebhooks             mf.Manifest
+	resourcesMonitoring           mf.Manifest
+	discoveryClient               *discovery.DiscoveryClient
+	resourceNamespace             string
+	resourcesHTTPAddonOperator    mf.Manifest
+	resourcesHTTPAddonInterceptor mf.Manifest
+	resourcesHTTPAddonScaler      mf.Manifest
+	injectTLSEnvVars              bool // true when running on OpenShift; enables TLS env var injection into KEDA deployments
 }
 
 func (r *KedaControllerReconciler) SetupWithManager(mgr ctrl.Manager, kedaControllerResourceNamespace string, logger logr.Logger) error {
@@ -109,20 +130,48 @@ func (r *KedaControllerReconciler) SetupWithManager(mgr ctrl.Manager, kedaContro
 	r.resourcesMetrics = manifestMetrics
 	r.resourcesWebhooks = manifestWebhooks
 	r.resourcesMonitoring = manifestMonitoring
+
+	httpAddonManifest, err := resources.GetHTTPAddonResourcesManifest()
+	if err != nil {
+		return fmt.Errorf("failed to load HTTP Add-on manifest: %w", err)
+	}
+	if err := r.parseHTTPAddonManifests(httpAddonManifest); err != nil {
+		return err
+	}
+
 	if restConfig, err := ctrl.GetConfig(); err != nil {
 		logger.Info("Unable to get REST Config for cluster version discovery. Ignore this message in test environments", "err", err)
 	} else {
 		if r.discoveryClient, err = discovery.NewDiscoveryClientForConfig(restConfig); err != nil {
 			logger.Info("Unable to get discovery client for cluster version discovery. Ignore this message in test environments", "err", err)
 		}
+		if directClient, err := client.New(restConfig, client.Options{Scheme: mgr.GetScheme()}); err != nil {
+			logger.Error(err, "Unable to create direct client for TLS profile change detection. Ignore this message in test environments")
+		} else {
+			ctx := context.TODO()
+			if util.RunningOnOpenshift(ctx, logger, directClient) {
+				r.injectTLSEnvVars = true
+			}
+		}
 	}
 
 	go r.ensureKedaController(logger)
 
-	return ctrl.NewControllerManagedBy(mgr).
+	controller := ctrl.NewControllerManagedBy(mgr).
 		For(&kedav1alpha1.KedaController{}).
-		Owns(&appsv1.Deployment{}).
-		Complete(r)
+		Owns(&appsv1.Deployment{})
+	if r.injectTLSEnvVars {
+		controller = controller.Watches(&openshiftconfigv1.APIServer{},
+			handler.TypedFuncs[client.Object, reconcile.Request]{
+				CreateFunc: func(_ context.Context, _ event.TypedCreateEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+					r.enqueueKedaControllerReconcile(q)
+				},
+				UpdateFunc: func(_ context.Context, e event.TypedUpdateEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+					r.enqueueOnTLSProfileChange(e.ObjectOld, e.ObjectNew, q)
+				},
+			})
+	}
+	return controller.Complete(r)
 }
 
 func (r *KedaControllerReconciler) ensureKedaController(logger logr.Logger) {
@@ -136,7 +185,7 @@ func (r *KedaControllerReconciler) ensureKedaController(logger logr.Logger) {
 
 	// Fetch operator namespace
 	kedaNamespace := &corev1.Namespace{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: r.resourceNamespace}, kedaNamespace)
+	err := r.Get(ctx, types.NamespacedName{Name: r.resourceNamespace}, kedaNamespace)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Error(err, "Keda namespace not found.")
@@ -151,12 +200,12 @@ func (r *KedaControllerReconciler) ensureKedaController(logger logr.Logger) {
 
 	// If operator namespace is not annotated, annotate and create a default KedaController if one doesn't exist
 	if _, ok := annotations[kedaDefaultControllerAnnotation]; !ok {
-		err = r.Client.Get(ctx, types.NamespacedName{Name: kedaControllerResourceName, Namespace: r.resourceNamespace}, &kedav1alpha1.KedaController{})
+		err = r.Get(ctx, types.NamespacedName{Name: kedaControllerResourceName, Namespace: r.resourceNamespace}, &kedav1alpha1.KedaController{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				logger.Info("KedaController does not exist. Creating default KedaController resource")
 				instance := r.initializeDefaultController()
-				err = r.Client.Create(ctx, instance)
+				err = r.Create(ctx, instance)
 				if err != nil {
 					logger.Error(err, "Error creating default KedaController")
 					return
@@ -177,7 +226,7 @@ func (r *KedaControllerReconciler) ensureKedaController(logger logr.Logger) {
 
 		annotations[kedaDefaultControllerAnnotation] = "true"
 		kedaNamespaceCopy.SetAnnotations(annotations)
-		err = r.Client.Patch(ctx, kedaNamespaceCopy, client.StrategicMergeFrom(kedaNamespace))
+		err = r.Patch(ctx, kedaNamespaceCopy, client.StrategicMergeFrom(kedaNamespace))
 		if err != nil {
 			logger.Error(err, "Error patching namespace with annotation for default KedaController creation")
 			return
@@ -202,7 +251,54 @@ func (r *KedaControllerReconciler) initializeDefaultController() *kedav1alpha1.K
 	return keda
 }
 
+// enqueueKedaControllerReconcile unconditionally enqueues a reconcile request for the
+// KedaController singleton. Used when there is no previous object to diff against.
+func (r *KedaControllerReconciler) enqueueKedaControllerReconcile(q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+		Name:      kedaControllerResourceName,
+		Namespace: r.resourceNamespace,
+	}})
+}
+
+// enqueueOnTLSProfileChange is called by the APIServer UpdateFunc. It resolves the effective TLS
+// profile from both the old and new APIServer objects, and enqueues a KedaController reconcile
+// request only when the profile has changed.
+func (r *KedaControllerReconciler) enqueueOnTLSProfileChange(oldObj, newObj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+	oldConfig, ok := oldObj.(*openshiftconfigv1.APIServer)
+	if !ok {
+		return
+	}
+	newConfig, ok := newObj.(*openshiftconfigv1.APIServer)
+	if !ok {
+		return
+	}
+	oldProfile, oldErr := tlspkg.GetTLSProfileSpec(oldConfig.Spec.TLSSecurityProfile)
+	newProfile, newErr := tlspkg.GetTLSProfileSpec(newConfig.Spec.TLSSecurityProfile)
+	if oldErr == nil && newErr == nil && reflect.DeepEqual(oldProfile, newProfile) {
+		return
+	}
+	r.enqueueKedaControllerReconcile(q)
+}
+
+// tlsEnvVarTransforms reads the current TLS profile from the APIServer via the manager cache and
+// returns Transformers that set KEDA_SERVICE_TLS_CIPHER_LIST and KEDA_SERVICE_MIN_TLS_VERSION in
+// all containers of all Deployment resources. Returns nil if the fetch fails.
+func (r *KedaControllerReconciler) tlsEnvVarTransforms(ctx context.Context, logger logr.Logger) []mf.Transformer {
+	profile, err := tlspkg.FetchAPIServerTLSProfile(ctx, r.Client)
+	if err != nil {
+		logger.Error(err, "Failed to fetch TLS profile from APIServer; skipping TLS env var update")
+		return nil
+	}
+	minTLSVersion := strings.TrimPrefix(string(profile.MinTLSVersion), "Version")
+	cipherList := strings.Join(profile.Ciphers, ",")
+	return []mf.Transformer{
+		transform.EnsureEnvVarInAllContainers(kedaTLSMinVersionEnvVar, minTLSVersion, r.Scheme),
+		transform.EnsureEnvVarInAllContainers(kedaTLSCipherListEnvVar, cipherList, r.Scheme),
+	}
+}
+
 // +kubebuilder:rbac:groups=keda.sh,resources=kedacontrollers;kedacontrollers/finalizers;kedacontrollers/status,verbs="*"
+// +kubebuilder:rbac:groups=keda.sh,resources=scaledobjects,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups="",resources=namespaces;serviceaccounts;pods;services;services/finalizers;endpoints;persistentvolumeclaims;events;configmaps;secrets,verbs="*"
 // +kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;replicasets;statefulsets,verbs="*"
 // +kubebuilder:rbac:groups=apps,resourceNames=keda-olm-operator,resources=deployments/finalizers,verbs="*"
@@ -211,8 +307,10 @@ func (r *KedaControllerReconciler) initializeDefaultController() *kedav1alpha1.K
 // +kubebuilder:rbac:groups=apiregistration.k8s.io,resources=apiservices,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors;podmonitors,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=list
+// +kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups="coordination.k8s.io",resources=leases,verbs="*"
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=create;delete;get;list;patch;update;watch
 
 // Reconcile reads that state of the cluster for a KedaController object and makes changes based on the state read
 // and what is in the KedaController.Spec
@@ -226,7 +324,7 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// Fetch the KedaController instance
 	instance := &kedav1alpha1.KedaController{}
-	err := r.Client.Get(ctx, req.NamespacedName, instance)
+	err := r.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -258,7 +356,7 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// removed, the object will be deleted.
 			patch := client.MergeFrom(instance.DeepCopy())
 			instance.SetFinalizers(remove(instance.GetFinalizers(), kedaControllerFinalizer))
-			err := r.Client.Patch(ctx, instance, patch)
+			err := r.Patch(ctx, instance, patch)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -308,6 +406,14 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if err := r.installMonitoring(ctx, logger, instance); err != nil {
 		status.MarkInstallFailed("Not able to install monitoring resources")
+		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, statusErr)
+		}
+		return ctrl.Result{}, err
+	}
+
+	if err := r.installHTTPAddon(ctx, logger, instance, status); err != nil {
+		status.MarkInstallFailed("Not able to install HTTP Add-on")
 		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
 			err = fmt.Errorf("got error: %s and then another: %s", err, statusErr)
 		}
@@ -477,6 +583,10 @@ func (r *KedaControllerReconciler) installController(ctx context.Context, logger
 	}
 
 	runningOnOpenshift := util.RunningOnOpenshift(ctx, logger, r.Client)
+
+	if r.injectTLSEnvVars {
+		transforms = append(transforms, r.tlsEnvVarTransforms(ctx, logger)...)
+	}
 
 	caConfigMaps := instance.Spec.Operator.CAConfigMaps
 	if runningOnOpenshift {
@@ -650,6 +760,307 @@ func (r *KedaControllerReconciler) installMonitoring(ctx context.Context, logger
 	return nil
 }
 
+func (r *KedaControllerReconciler) parseHTTPAddonManifests(manifest mf.Manifest) error {
+	var operatorResources, interceptorResources, scalerResources []unstructured.Unstructured
+
+	for _, res := range manifest.Resources() {
+		name := res.GetName()
+		switch {
+		case strings.Contains(name, "interceptor"):
+			interceptorResources = append(interceptorResources, res)
+		case strings.Contains(name, "scaler") || strings.Contains(name, "external-scaler"):
+			scalerResources = append(scalerResources, res)
+		default:
+			operatorResources = append(operatorResources, res)
+		}
+	}
+
+	manifestClient := mfc.NewClient(r.Client)
+
+	var err error
+	r.resourcesHTTPAddonOperator, err = mf.ManifestFrom(mf.Slice(operatorResources), mf.UseLastAppliedConfigAnnotation(resources.LastConfigID))
+	if err != nil {
+		return err
+	}
+	r.resourcesHTTPAddonOperator.Client = manifestClient
+
+	r.resourcesHTTPAddonInterceptor, err = mf.ManifestFrom(mf.Slice(interceptorResources), mf.UseLastAppliedConfigAnnotation(resources.LastConfigID))
+	if err != nil {
+		return err
+	}
+	r.resourcesHTTPAddonInterceptor.Client = manifestClient
+
+	r.resourcesHTTPAddonScaler, err = mf.ManifestFrom(mf.Slice(scalerResources), mf.UseLastAppliedConfigAnnotation(resources.LastConfigID))
+	if err != nil {
+		return err
+	}
+	r.resourcesHTTPAddonScaler.Client = manifestClient
+
+	return nil
+}
+
+func deleteHTTPAddonManifest(logger logr.Logger, manifest mf.Manifest, component string) error {
+	if manifest.Client == nil && len(manifest.Resources()) == 0 {
+		return nil
+	}
+	if err := manifest.Delete(); err != nil {
+		logger.Error(err, fmt.Sprintf("Unable to delete HTTP Add-on %s resources", component))
+		return err
+	}
+	return nil
+}
+
+func (r *KedaControllerReconciler) deleteHTTPAddon(logger logr.Logger) error {
+	if err := deleteHTTPAddonManifest(logger, r.resourcesHTTPAddonScaler, "Scaler"); err != nil {
+		return err
+	}
+	if err := deleteHTTPAddonManifest(logger, r.resourcesHTTPAddonInterceptor, "Interceptor"); err != nil {
+		return err
+	}
+	if err := deleteHTTPAddonManifest(logger, r.resourcesHTTPAddonOperator, "Operator"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func httpAddonResolveImage(imageSpec kedav1alpha1.HTTPAddonImageSpec, defaultImage string, globalVersion string) string {
+	tag := imageSpec.Tag
+	if tag == "" {
+		tag = globalVersion
+	}
+	if imageSpec.Name == "" && tag == "" {
+		return ""
+	}
+	name := imageSpec.Name
+	if name == "" {
+		name = defaultImage
+	}
+	if tag == "" {
+		return name
+	}
+	return name + ":" + tag
+}
+
+func httpAddonComponentTransforms(
+	spec kedav1alpha1.GenericDeploymentSpec,
+	containerName string,
+	image string,
+	replicas *int32,
+	env []corev1.EnvVar,
+	logLevel, logEncoder, logTimeEncoding string,
+	instance *kedav1alpha1.KedaController,
+	scheme *runtime.Scheme,
+	logger logr.Logger,
+) []mf.Transformer {
+	transforms := []mf.Transformer{
+		transform.InjectOwner(instance),
+		transform.ReplaceAllNamespaces(instance.Namespace),
+	}
+
+	if image != "" {
+		transforms = append(transforms, transform.ReplaceContainerImage(image, containerName, scheme))
+	}
+
+	if replicas != nil {
+		transforms = append(transforms, transform.ReplaceReplicas(replicas, scheme))
+	}
+
+	if len(env) > 0 {
+		transforms = append(transforms, transform.ReplaceContainerEnv(env, containerName, scheme))
+	}
+
+	if len(logLevel) > 0 {
+		transforms = append(transforms, transform.ReplaceLogLevel(logLevel, containerName, scheme, logger))
+	}
+	if len(logEncoder) > 0 {
+		transforms = append(transforms, transform.ReplaceLogEncoder(logEncoder, containerName, scheme, logger))
+	}
+	if len(logTimeEncoding) > 0 {
+		transforms = append(transforms, transform.ReplaceLogTimeEncoding(logTimeEncoding, containerName, scheme, logger))
+	}
+
+	if len(spec.DeploymentAnnotations) > 0 {
+		transforms = append(transforms, transform.AddDeploymentAnnotations(spec.DeploymentAnnotations, scheme))
+	}
+	if len(spec.DeploymentLabels) > 0 {
+		transforms = append(transforms, transform.AddDeploymentLabels(spec.DeploymentLabels, scheme))
+	}
+	if len(spec.PodAnnotations) > 0 {
+		transforms = append(transforms, transform.AddPodAnnotations(spec.PodAnnotations, scheme))
+	}
+	if len(spec.PodLabels) > 0 {
+		transforms = append(transforms, transform.AddPodLabels(spec.PodLabels, scheme))
+	}
+	if len(spec.NodeSelector) > 0 {
+		transforms = append(transforms, transform.ReplaceNodeSelector(spec.NodeSelector, scheme))
+	}
+	if len(spec.Tolerations) > 0 {
+		transforms = append(transforms, transform.ReplaceTolerations(spec.Tolerations, scheme))
+	}
+	if spec.Affinity != nil {
+		transforms = append(transforms, transform.ReplaceAffinity(spec.Affinity, scheme))
+	}
+	if len(spec.PriorityClassName) > 0 {
+		transforms = append(transforms, transform.ReplacePriorityClassName(spec.PriorityClassName, scheme))
+	}
+	if spec.Resources.Limits != nil || spec.Resources.Requests != nil {
+		transforms = append(transforms, transform.ReplaceContainerResources(spec.Resources, containerName, scheme))
+	}
+	if spec.Volumes != nil {
+		transforms = append(transforms, transform.ReplaceDeploymentVolumes(spec.Volumes, scheme))
+	}
+	if spec.VolumeMounts != nil {
+		transforms = append(transforms, transform.ReplaceContainerVolumeMounts(spec.VolumeMounts, containerName, scheme))
+	}
+
+	return transforms
+}
+
+func (r *KedaControllerReconciler) installHTTPAddon(ctx context.Context, logger logr.Logger, instance *kedav1alpha1.KedaController, status *kedav1alpha1.KedaControllerStatus) error {
+	if !instance.Spec.HTTPAddon.Enabled {
+		if status.HTTPAddon != nil {
+			logger.Info("HTTP Add-on is disabled, cleaning up resources")
+			if err := r.deleteHTTPAddon(logger); err != nil {
+				return err
+			}
+			status.HTTPAddon = nil
+		}
+		return nil
+	}
+
+	if len(r.resourcesHTTPAddonOperator.Resources()) == 0 {
+		return fmt.Errorf("HTTP Add-on is enabled but no manifests are available; ensure resources/keda-http-addon.yaml exists")
+	}
+
+	logger.Info("Reconciling HTTP Add-on")
+	httpAddonStatus := &kedav1alpha1.HTTPAddonStatus{}
+
+	globalVersion := instance.Spec.HTTPAddon.Version
+	addonSpec := instance.Spec.HTTPAddon
+
+	removeSeccomp := util.RunningOnOpenshift(ctx, logger, r.Client) && util.RunningOnClusterWithoutSeccompProfileDefault(logger, r.discoveryClient)
+
+	// --- Operator ---
+	operatorImage := ""
+	if envImage := os.Getenv("KEDA_HTTP_ADDON_OPERATOR_IMAGE"); len(envImage) > 0 {
+		operatorImage = envImage
+	} else {
+		operatorImage = httpAddonResolveImage(addonSpec.Operator.Image, httpAddonDefaultOperatorImage, globalVersion)
+	}
+	operatorTransforms := httpAddonComponentTransforms(
+		addonSpec.Operator.GenericDeploymentSpec,
+		httpAddonContainerOperator,
+		operatorImage,
+		addonSpec.Operator.Replicas,
+		addonSpec.Operator.Env,
+		addonSpec.Operator.LogLevel,
+		addonSpec.Operator.LogEncoder,
+		addonSpec.Operator.LogTimeEncoding,
+		instance, r.Scheme, logger,
+	)
+	if removeSeccomp {
+		operatorTransforms = append(operatorTransforms, transform.RemoveSeccompProfile(httpAddonContainerOperator, r.Scheme, logger))
+	}
+
+	manifest, err := r.resourcesHTTPAddonOperator.Transform(operatorTransforms...)
+	if err != nil {
+		logger.Error(err, "Unable to transform HTTP Add-on Operator manifest")
+		httpAddonStatus.MarkInstallFailed("Failed to transform HTTP Add-on Operator manifest")
+		status.HTTPAddon = httpAddonStatus
+		return err
+	}
+	r.resourcesHTTPAddonOperator = manifest
+
+	if err := r.resourcesHTTPAddonOperator.Apply(); err != nil {
+		logger.Error(err, "Unable to install HTTP Add-on Operator")
+		httpAddonStatus.MarkInstallFailed("Failed to install HTTP Add-on Operator")
+		status.HTTPAddon = httpAddonStatus
+		return err
+	}
+
+	// --- Interceptor ---
+	interceptorImage := ""
+	if envImage := os.Getenv("KEDA_HTTP_ADDON_INTERCEPTOR_IMAGE"); len(envImage) > 0 {
+		interceptorImage = envImage
+	} else {
+		interceptorImage = httpAddonResolveImage(addonSpec.Interceptor.Image, httpAddonDefaultInterceptorImage, globalVersion)
+	}
+	interceptorTransforms := httpAddonComponentTransforms(
+		addonSpec.Interceptor.GenericDeploymentSpec,
+		httpAddonContainerInterceptor,
+		interceptorImage,
+		addonSpec.Interceptor.Replicas,
+		addonSpec.Interceptor.Env,
+		addonSpec.Interceptor.LogLevel,
+		addonSpec.Interceptor.LogEncoder,
+		addonSpec.Interceptor.LogTimeEncoding,
+		instance, r.Scheme, logger,
+	)
+	if removeSeccomp {
+		interceptorTransforms = append(interceptorTransforms, transform.RemoveSeccompProfile(httpAddonContainerInterceptor, r.Scheme, logger))
+	}
+
+	manifest, err = r.resourcesHTTPAddonInterceptor.Transform(interceptorTransforms...)
+	if err != nil {
+		logger.Error(err, "Unable to transform HTTP Add-on Interceptor manifest")
+		httpAddonStatus.MarkInstallFailed("Failed to transform HTTP Add-on Interceptor manifest")
+		status.HTTPAddon = httpAddonStatus
+		return err
+	}
+	r.resourcesHTTPAddonInterceptor = manifest
+
+	if err := r.resourcesHTTPAddonInterceptor.Apply(); err != nil {
+		logger.Error(err, "Unable to install HTTP Add-on Interceptor")
+		httpAddonStatus.MarkInstallFailed("Failed to install HTTP Add-on Interceptor")
+		status.HTTPAddon = httpAddonStatus
+		return err
+	}
+
+	// --- Scaler ---
+	scalerImage := ""
+	if envImage := os.Getenv("KEDA_HTTP_ADDON_SCALER_IMAGE"); len(envImage) > 0 {
+		scalerImage = envImage
+	} else {
+		scalerImage = httpAddonResolveImage(addonSpec.Scaler.Image, httpAddonDefaultScalerImage, globalVersion)
+	}
+	scalerTransforms := httpAddonComponentTransforms(
+		addonSpec.Scaler.GenericDeploymentSpec,
+		httpAddonContainerScaler,
+		scalerImage,
+		addonSpec.Scaler.Replicas,
+		addonSpec.Scaler.Env,
+		addonSpec.Scaler.LogLevel,
+		addonSpec.Scaler.LogEncoder,
+		addonSpec.Scaler.LogTimeEncoding,
+		instance, r.Scheme, logger,
+	)
+	if removeSeccomp {
+		scalerTransforms = append(scalerTransforms, transform.RemoveSeccompProfile(httpAddonContainerScaler, r.Scheme, logger))
+	}
+
+	manifest, err = r.resourcesHTTPAddonScaler.Transform(scalerTransforms...)
+	if err != nil {
+		logger.Error(err, "Unable to transform HTTP Add-on Scaler manifest")
+		httpAddonStatus.MarkInstallFailed("Failed to transform HTTP Add-on Scaler manifest")
+		status.HTTPAddon = httpAddonStatus
+		return err
+	}
+	r.resourcesHTTPAddonScaler = manifest
+
+	if err := r.resourcesHTTPAddonScaler.Apply(); err != nil {
+		logger.Error(err, "Unable to install HTTP Add-on Scaler")
+		httpAddonStatus.MarkInstallFailed("Failed to install HTTP Add-on Scaler")
+		status.HTTPAddon = httpAddonStatus
+		return err
+	}
+
+	httpAddonStatus.Version = globalVersion
+	httpAddonStatus.MarkInstallSucceeded(fmt.Sprintf("HTTP Add-on v%s is installed in namespace '%s'", globalVersion, r.resourceNamespace))
+	status.HTTPAddon = httpAddonStatus
+
+	return nil
+}
+
 func (r *KedaControllerReconciler) installMetricsServer(ctx context.Context, logger logr.Logger, instance *kedav1alpha1.KedaController) error {
 	logger.Info("Reconciling KEDA Metrics Server Deployment")
 
@@ -661,6 +1072,10 @@ func (r *KedaControllerReconciler) installMetricsServer(ctx context.Context, log
 	// Use alternate image spec if env var set
 	if controllerImage := os.Getenv("KEDA_METRICS_SERVER_IMAGE"); len(controllerImage) > 0 {
 		transforms = append(transforms, transform.ReplaceMetricsServerImage(controllerImage, r.Scheme))
+	}
+
+	if r.injectTLSEnvVars {
+		transforms = append(transforms, r.tlsEnvVarTransforms(ctx, logger)...)
 	}
 
 	// on OpenShift 4.10 (kube 1.23) and earlier, the RuntimeDefault SeccompProfile won't validate against any SCC
@@ -693,8 +1108,8 @@ func (r *KedaControllerReconciler) installMetricsServer(ctx context.Context, log
 
 	// Audit logging validation - configMap exists, logOutVolumeClaim validation
 	// policy is a wrapper AuditPolicy for auditv1.Policy for easier user exposure
-	policy := instance.Spec.MetricsServer.AuditConfig.Policy
-	logOutVolumeClaim := instance.Spec.MetricsServer.AuditConfig.LogOutputVolumeClaim
+	policy := instance.Spec.MetricsServer.Policy
+	logOutVolumeClaim := instance.Spec.MetricsServer.LogOutputVolumeClaim
 
 	// if policy is not empty, audit logging is ON
 	if !reflect.DeepEqual(policy, kedav1alpha1.AuditPolicy{}) {
@@ -712,7 +1127,7 @@ func (r *KedaControllerReconciler) installMetricsServer(ctx context.Context, log
 
 		// --- Log output setup ---
 		// validation checks around logOutVolumeClaim and lifetime arguments
-		if err := validateAuditLogVolumeWithArgs(logOutVolumeClaim, instance.Spec.MetricsServer.AuditConfig.AuditLifetime); err != nil {
+		if err := validateAuditLogVolumeWithArgs(logOutVolumeClaim, instance.Spec.MetricsServer.AuditLifetime); err != nil {
 			logger.Error(err, "unable to validate args for Audit logging")
 			return err
 		}
@@ -817,7 +1232,7 @@ func (r *KedaControllerReconciler) ensureOpenshiftCABundleConfigMap(ctx context.
 	logger.Info("Ensure ConfigMap for OpenShift CA bundle exists")
 
 	configMap := &corev1.ConfigMap{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: caBundleConfigMapName, Namespace: instance.Namespace}, configMap)
+	err := r.Get(ctx, types.NamespacedName{Name: caBundleConfigMapName, Namespace: instance.Namespace}, configMap)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			configMap.Name = caBundleConfigMapName
@@ -829,7 +1244,7 @@ func (r *KedaControllerReconciler) ensureOpenshiftCABundleConfigMap(ctx context.
 				return err
 			}
 
-			err = r.Client.Create(ctx, configMap)
+			err = r.Create(ctx, configMap)
 			if err != nil {
 				logger.Error(err, "Failed to create new ConfigMap in cluster", "ConfigMap.Namespace", instance.Namespace, "ConfigMap.Name", caBundleConfigMapName)
 				return err
@@ -860,7 +1275,7 @@ func (r *KedaControllerReconciler) ensureOpenshiftCABundleConfigMap(ctx context.
 	}
 
 	if configMapUpdate {
-		err = r.Client.Update(ctx, configMap)
+		err = r.Update(ctx, configMap)
 		if err != nil {
 			logger.Error(err, "Failed to update ConfigMap in cluster", "ConfigMap.Namespace", instance.Namespace, "ConfigMap.Name", caBundleConfigMapName)
 			return err
@@ -871,7 +1286,7 @@ func (r *KedaControllerReconciler) ensureOpenshiftCABundleConfigMap(ctx context.
 }
 
 func (r *KedaControllerReconciler) ensureMetricsServerAuditLogPolicyConfigMap(ctx context.Context, logger logr.Logger, instance *kedav1alpha1.KedaController) error {
-	policy := instance.Spec.MetricsServer.AuditConfig.Policy
+	policy := instance.Spec.MetricsServer.Policy
 
 	// create real policy struct from higher level wrapper AuditPolicy exposed to user
 	realPolicy := auditv1.Policy{}
@@ -887,7 +1302,7 @@ func (r *KedaControllerReconciler) ensureMetricsServerAuditLogPolicyConfigMap(ct
 	}
 
 	configMap := &corev1.ConfigMap{}
-	err = r.Client.Get(ctx, types.NamespacedName{Name: auditlogPolicyConfigMap, Namespace: instance.Namespace}, configMap)
+	err = r.Get(ctx, types.NamespacedName{Name: auditlogPolicyConfigMap, Namespace: instance.Namespace}, configMap)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// create ConfigMap if not found
@@ -902,7 +1317,7 @@ func (r *KedaControllerReconciler) ensureMetricsServerAuditLogPolicyConfigMap(ct
 				return err
 			}
 
-			err = r.Client.Create(ctx, configMap)
+			err = r.Create(ctx, configMap)
 			if err != nil {
 				logger.Error(err, "failed to create new Audit Policy ConfigMap in cluster", "ConfigMap.Namespace", instance.Namespace, "ConfigMap.Name", auditlogPolicyConfigMap)
 				return err
@@ -930,7 +1345,7 @@ func (r *KedaControllerReconciler) ensureMetricsServerAuditLogPolicyConfigMap(ct
 	}
 
 	if configMapUpdate {
-		err = r.Client.Update(ctx, configMap)
+		err = r.Update(ctx, configMap)
 		if err != nil {
 			logger.Error(err, "failed to update ConfigMap in cluster", "ConfigMap.Namespace", instance.Namespace, "ConfigMap.Name", auditlogPolicyConfigMap)
 			return err
@@ -945,6 +1360,10 @@ func (r *KedaControllerReconciler) installAdmissionWebhooks(ctx context.Context,
 		transform.InjectOwner(instance),
 		transform.ReplaceAllNamespaces(instance.Namespace),
 		transform.ReplaceWatchNamespace(instance.Spec.WatchNamespace, "keda-admission-webhooks", r.Scheme, logger),
+	}
+
+	if r.injectTLSEnvVars {
+		transforms = append(transforms, r.tlsEnvVarTransforms(ctx, logger)...)
 	}
 
 	// on OpenShift 4.10 (kube 1.23) and earlier, the RuntimeDefault SeccompProfile won't validate against any SCC
@@ -1058,14 +1477,14 @@ func auditConfigTransformation(t []mf.Transformer, ac kedav1alpha1.AuditConfig, 
 	if ac.LogFormat != "" {
 		t = append(t, transform.ReplaceAuditConfig(ac.LogFormat, "logformat", scheme, logger))
 	}
-	if ac.AuditLifetime.MaxAge != "" {
-		t = append(t, transform.ReplaceAuditConfig(ac.AuditLifetime.MaxAge, "maxage", scheme, logger))
+	if ac.MaxAge != "" {
+		t = append(t, transform.ReplaceAuditConfig(ac.MaxAge, "maxage", scheme, logger))
 	}
-	if ac.AuditLifetime.MaxBackup != "" {
-		t = append(t, transform.ReplaceAuditConfig(ac.AuditLifetime.MaxBackup, "maxbackup", scheme, logger))
+	if ac.MaxBackup != "" {
+		t = append(t, transform.ReplaceAuditConfig(ac.MaxBackup, "maxbackup", scheme, logger))
 	}
-	if ac.AuditLifetime.MaxSize != "" {
-		t = append(t, transform.ReplaceAuditConfig(ac.AuditLifetime.MaxSize, "maxsize", scheme, logger))
+	if ac.MaxSize != "" {
+		t = append(t, transform.ReplaceAuditConfig(ac.MaxSize, "maxsize", scheme, logger))
 	}
 	return t
 }

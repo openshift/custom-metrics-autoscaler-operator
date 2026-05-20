@@ -76,6 +76,9 @@ metadata:
               "logEncoder": "console",
               "logLevel": "info"
             },
+            "httpAddon": {
+              "enabled": false
+            },
             "metricsServer": {
               "logLevel": "0",
               "networkEgressAllowAll": "true"
@@ -161,15 +164,15 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Cloud Provider
     certified: "false"
-    containerImage: ghcr.io/kedacore/keda-olm-operator:2.18.1
-    createdAt: "2023-09-11T23:35:30Z"
+    containerImage: ghcr.io/kedacore/keda-olm-operator:2.19.0
+    createdAt: "2026-04-22T03:27:54Z"
     description: Operator that provides KEDA, a Kubernetes-based event driver autoscaler
     operatorframework.io/suggested-namespace: keda
-    operators.operatorframework.io/builder: operator-sdk-v1.23.0
+    operators.operatorframework.io/builder: operator-sdk-v1.38.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/kedacore/keda-olm-operator
     support: KEDA Community
-  name: keda.v2.18.1
+  name: keda.v2.19.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -206,6 +209,12 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:Secret
       version: v1alpha1
+    - kind: HTTPScaledObject
+      name: httpscaledobjects.http.keda.sh
+      version: v1alpha1
+    - kind: InterceptorRoute
+      name: interceptorroutes.http.keda.sh
+      version: v1beta1
     - description: |
         Represents an installation of a particular version of KEDA Controller.
       displayName: KedaController
@@ -577,6 +586,14 @@ spec:
           verbs:
           - '*'
         - apiGroups:
+          - config.openshift.io
+          resources:
+          - apiservers
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
           - coordination.k8s.io
           resources:
           - leases
@@ -590,6 +607,18 @@ spec:
           - kedacontrollers/status
           verbs:
           - '*'
+        - apiGroups:
+          - keda.sh
+          resources:
+          - scaledobjects
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
         - apiGroups:
           - monitoring.coreos.com
           resources:
@@ -616,6 +645,18 @@ spec:
           - update
           - watch
         - apiGroups:
+          - policy
+          resources:
+          - poddisruptionbudgets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
           - rbac.authorization.k8s.io
           resources:
           - clusterrolebindings
@@ -630,23 +671,25 @@ spec:
           - routes
           verbs:
           - '*'
-          - list
         serviceAccountName: keda-olm-operator
       deployments:
       - label:
           app.kubernetes.io/part-of: keda-olm-operator
+          app.kubernetes.io/version: main
         name: keda-olm-operator
         spec:
           replicas: 1
           selector:
             matchLabels:
               app.kubernetes.io/part-of: keda-olm-operator
+              app.kubernetes.io/version: main
               name: keda-olm-operator
           strategy: {}
           template:
             metadata:
               labels:
                 app.kubernetes.io/part-of: keda-olm-operator
+                app.kubernetes.io/version: main
                 name: keda-olm-operator
             spec:
               containers:
@@ -735,6 +778,6 @@ spec:
   minKubeVersion: 1.23.0
   provider:
     name: KEDA Community
-  replaces: keda.v2.18.0
+  replaces: keda.v2.18.3
   selector: {}
-  version: 2.18.1
+  version: 2.19.0

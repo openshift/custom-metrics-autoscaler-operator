@@ -77,13 +77,11 @@ metadata:
               "logLevel": "info"
             },
             "metricsServer": {
-              "logLevel": "0",
-              "networkEgressAllowAll": "true"
+              "logLevel": "0"
             },
             "operator": {
               "logEncoder": "console",
-              "logLevel": "info",
-              "networkEgressAllowAll": "true"
+              "logLevel": "info"
             },
             "serviceAccount": null,
             "watchNamespace": ""
@@ -595,18 +593,6 @@ spec:
           resources:
           - podmonitors
           - servicemonitors
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - networking.k8s.io
-          resources:
-          - networkpolicies
           verbs:
           - create
           - delete
