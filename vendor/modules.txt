@@ -175,8 +175,6 @@ github.com/onsi/ginkgo/reporters/stenographer
 github.com/onsi/ginkgo/reporters/stenographer/support/go-colorable
 github.com/onsi/ginkgo/reporters/stenographer/support/go-isatty
 github.com/onsi/ginkgo/types
-# github.com/onsi/ginkgo/v2 v2.28.1
-## explicit; go 1.24.0
 # github.com/onsi/gomega v1.39.1
 ## explicit; go 1.24.0
 github.com/onsi/gomega
@@ -193,15 +191,15 @@ github.com/onsi/gomega/types
 # github.com/open-policy-agent/cert-controller v0.16.0
 ## explicit; go 1.25.0
 github.com/open-policy-agent/cert-controller/pkg/rotator
-# github.com/openshift/api v0.0.0-20260421211856-fec28cd18ea9
+# github.com/openshift/api v0.0.0-20260521125114-09730f85d883
 ## explicit; go 1.25.0
 github.com/openshift/api/config/v1
 github.com/openshift/api/route/v1
 # github.com/openshift/controller-runtime-common v0.0.0-20260318085703-1812aed6dbd2
 ## explicit; go 1.25.0
 github.com/openshift/controller-runtime-common/pkg/tls
-# github.com/openshift/library-go v0.0.0-20260213153706-03f1709971c5
-## explicit; go 1.24.0
+# github.com/openshift/library-go v0.0.0-20260604143514-ba2b9a3a3499
+## explicit; go 1.25.0
 github.com/openshift/library-go/pkg/crypto
 # github.com/pkg/errors v0.9.1
 ## explicit
