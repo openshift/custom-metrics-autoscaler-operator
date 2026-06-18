@@ -395,6 +395,13 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		return ctrl.Result{}, err
 	}
+	if err := r.ensurePrometheusMonitoringRBAC(ctx, logger, instance); err != nil {
+		status.MarkInstallFailed("Not able to ensure Prometheus monitoring RBAC")
+		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, statusErr)
+		}
+		return ctrl.Result{}, err
+	}
 	if err := r.installController(ctx, logger, instance); err != nil {
 		status.MarkInstallFailed("Not able to install KEDA Controller")
 		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
