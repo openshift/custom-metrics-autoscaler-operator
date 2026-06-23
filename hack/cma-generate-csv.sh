@@ -93,7 +93,9 @@ jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.cont
 # export the env vars and then exec /manager. This hack is needed due to OSBS requiring that env vars have the prefix RELATED_IMAGE_, so bash translates from OSBS-style env vars to operator env vars. See https://osbs.readthedocs.io/en/latest/users.html?highlight=operator#pullspec-locations
 jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].args |= ["-c", "export KEDA_OPERATOR_IMAGE=$RELATED_IMAGE_1; export KEDA_METRICS_SERVER_IMAGE=$RELATED_IMAGE_2; export KEDA_ADMISSION_WEBHOOKS_IMAGE=$RELATED_IMAGE_3; exec /manager \"$0\" \"$@\"" ] + .  |'
 # create a spot to pass in the operand image specs as env vars using OSBS-style RELATED_IMAGE_ names
-jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].env += [{"name":"RELATED_IMAGE_1","value":"CMA_OPERAND_PLACEHOLDER_1"},{"name":"RELATED_IMAGE_2","value":"CMA_OPERAND_PLACEHOLDER_2"},{"name":"RELATED_IMAGE_3","value":"CMA_OPERAND_PLACEHOLDER_3"}]'
+jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.template.spec.containers[0].env += [{"name":"RELATED_IMAGE_1","value":"CMA_OPERAND_PLACEHOLDER_1"},{"name":"RELATED_IMAGE_2","value":"CMA_OPERAND_PLACEHOLDER_2"},{"name":"RELATED_IMAGE_3","value":"CMA_OPERAND_PLACEHOLDER_3"}] | '
+# Deployment selectors are immutable; never include app.kubernetes.io/version in matchLabels
+jq_filter="$jq_filter"'.spec.install.spec.deployments[0].spec.selector.matchLabels |= del(.["app.kubernetes.io/version"])'
 
 # pipe the filtered upstream CSV and the patch together to jq to combine them
 { bin/yaml2json keda/${ver}/manifests/keda.v${ver}.clusterserviceversion.yaml | jq "$jq_filter";
