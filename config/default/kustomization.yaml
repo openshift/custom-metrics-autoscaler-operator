@@ -44,4 +44,8 @@ resources:
 - ../manager
 commonLabels:
   app.kubernetes.io/part-of: keda-olm-operator
-  app.kubernetes.io/version: main
+labels:
+- pairs:
+    app.kubernetes.io/version: main
+  includeSelectors: false
+  includeTemplates: true
