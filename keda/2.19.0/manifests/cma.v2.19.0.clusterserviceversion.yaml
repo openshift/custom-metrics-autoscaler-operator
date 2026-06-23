@@ -691,7 +691,6 @@ spec:
           selector:
             matchLabels:
               app.kubernetes.io/part-of: custom-metrics-autoscaler-operator
-              app.kubernetes.io/version: main
               name: custom-metrics-autoscaler-operator
           strategy: {}
           template:
