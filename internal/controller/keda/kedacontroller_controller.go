@@ -433,6 +433,14 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	if err := r.ensurePrometheusMonitoringRBAC(ctx, logger, instance); err != nil {
+		status.MarkInstallFailed("Not able to ensure Prometheus monitoring RBAC")
+		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, statusErr)
+		}
+		return ctrl.Result{}, err
+	}
+
 	status.Version = version.Version
 	status.MarkInstallSucceeded(fmt.Sprintf("KEDA v%s is installed in namespace '%s'", version.Version, r.resourceNamespace))
 	if err := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); err != nil {
@@ -1279,7 +1287,8 @@ func (r *KedaControllerReconciler) ensureOpenshiftCABundleConfigMap(ctx context.
 	}
 
 	if err := controllerutil.SetControllerReference(instance, configMap, r.Scheme); err != nil {
-		if !goerrors.Is(err, &controllerutil.AlreadyOwnedError{}) {
+		var alreadyOwnedErr *controllerutil.AlreadyOwnedError
+		if !goerrors.As(err, &alreadyOwnedErr) {
 			logger.Error(err, "Failed to check Controller Reference for ConfigMap")
 			return err
 		}
@@ -1349,7 +1358,8 @@ func (r *KedaControllerReconciler) ensureMetricsServerAuditLogPolicyConfigMap(ct
 	}
 
 	if err := controllerutil.SetControllerReference(instance, configMap, r.Scheme); err != nil {
-		if !goerrors.Is(err, &controllerutil.AlreadyOwnedError{}) {
+		var alreadyOwnedErr *controllerutil.AlreadyOwnedError
+		if !goerrors.As(err, &alreadyOwnedErr) {
 			logger.Error(err, "failed to check Controller Reference for ConfigMap")
 			return err
 		}
