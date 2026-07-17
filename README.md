@@ -693,3 +693,5 @@ To build the operator:
 ```bash
 make build
 ```
+
+<!-- TEMPORARY CI TEST — do not merge. Opened to verify the cloudevent_source e2e test on main. -->
