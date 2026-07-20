@@ -60,6 +60,29 @@ go mod tidy
 echo "Updating resources from KEDA $ver release"
 curl -L "https://github.com/kedacore/keda/releases/download/v${ver}/keda-${ver}.yaml" | sed 's/\r//g' > resources/keda.yaml
 
+# Workaround: since KEDA 2.20.0 the bundled manifests grant the operator the
+# 'events' resource only on the events.k8s.io API group (kedacore/keda#7781).
+# client-go's event broadcaster still writes events (including leader-election
+# events) to the core ("") group as well (kubernetes/kubernetes#94857), so with
+# only events.k8s.io granted, event recording is denied (kedacore/keda#883-like).
+# Restore the core group alongside events.k8s.io until the upstream KEDA manifest
+# is fixed.
+echo "Ensuring the operator 'events' RBAC rule includes the core \"\" API group"
+awk '
+  { line[NR] = $0 }
+  END {
+    for (i = 1; i <= NR; i++) {
+      # Insert the core ("") API group before the events.k8s.io events rule,
+      # unless it is already present (idempotent).
+      if (line[i] == "  - events.k8s.io" && line[i+1] == "  resources:" && \
+          line[i+2] == "  - events" && line[i-1] != "  - \"\"") {
+        print "  - \"\""
+      }
+      print line[i]
+    }
+  }
+' resources/keda.yaml > resources/keda.yaml.tmp && mv resources/keda.yaml.tmp resources/keda.yaml
+
 echo "Finding previous release version"
 prev=$(ls keda/ | grep -v "^${ver//./\\.}$" | sort --version-sort | tail -1)
 
