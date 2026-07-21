@@ -56,8 +56,8 @@ manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefin
 generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
-fmt: ## Run golangci-lint fmt against code.
-	golangci-lint fmt
+fmt: golangci-lint ## Run golangci-lint fmt against code.
+	$(GOLANGCI_LINT) fmt
 
 vet: ## Run go vet against code.
 	go vet ./...
@@ -199,11 +199,14 @@ $(LOCALBIN):
 KUSTOMIZE ?= go tool kustomize
 CONTROLLER_GEN ?= go tool controller-gen
 ENVTEST ?= go tool setup-envtest
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 
 ## Tool Versions
 # renovate: datasource=github-releases depName=operator-framework/operator-sdk
 OPERATOR_SDK_VERSION ?= v1.38.0
+# renovate: datasource=github-releases depName=golangci/golangci-lint
+GOLANGCI_LINT_VERSION ?= v2.12.2
 
 .PHONY: operator-sdk
 operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk locally if necessary.
@@ -216,13 +219,23 @@ $(OPERATOR_SDK): $(LOCALBIN)
 	    { curl -sSLo $(LOCALBIN)/operator-sdk https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$$(go env GOOS)_$$(go env GOARCH) && \
 	    chmod +x $(LOCALBIN)/operator-sdk; }
 
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+$(GOLANGCI_LINT): $(LOCALBIN)
+	@if test -x $(LOCALBIN)/golangci-lint && ! $(LOCALBIN)/golangci-lint version | grep -q $(patsubst v%,%,$(GOLANGCI_LINT_VERSION)); then \
+	    echo "$(LOCALBIN)/golangci-lint version is not expected $(GOLANGCI_LINT_VERSION). Removing it before downloading."; \
+	    rm -rf $(LOCALBIN)/golangci-lint; \
+	fi
+	test -s $(LOCALBIN)/golangci-lint || \
+	    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+
 .PHONY: lint
-lint: ## Run golangci-lint against code.
-	golangci-lint run
+lint: golangci-lint ## Run golangci-lint against code.
+	$(GOLANGCI_LINT) run
 
 .PHONY: lint-fix
-lint-fix: ## Run golangci-lint against code and fix issues.
-	golangci-lint run --fix
+lint-fix: golangci-lint ## Run golangci-lint against code and fix issues.
+	$(GOLANGCI_LINT) run --fix
 
 ##@ OLM Bundle
 
