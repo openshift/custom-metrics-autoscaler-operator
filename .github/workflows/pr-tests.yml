@@ -1,18 +1,25 @@
 name: CI
 on: [pull_request]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Validate PR
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: '1.25'
+          go-version: '1.26'
 
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 1
 
@@ -27,18 +34,20 @@ jobs:
   statics:
     name: Static Checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: '1.25'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+          go-version: '1.26'
+      - uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
         with:
-          version: v2.10
-          install-only: true
-      - uses: pre-commit/action@v3.0.1
+          version: v2.12.2
+      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+        env:
+          SKIP: golangci-lint
 
   test-build:
     name: Test Image Build
@@ -47,21 +56,20 @@ jobs:
       contents: read
       packages: write
 
-    container: ghcr.io/kedacore/keda-tools:1.25.6
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 1
           lfs: true
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: '1.25'
+          go-version: '1.26'
 
       - name: Go modules cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: /go/pkg
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -70,3 +78,126 @@ jobs:
 
       - name: Test build
         run: make docker-build
+
+  e2e:
+    name: E2E Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26'
+
+      - name: Create kind cluster with local registry
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        env:
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kind
+          KIND_VERSION: "v0.32.0"
+          # renovate: datasource=docker depName=kindest/node
+          KIND_NODE_VERSION: "v1.36.1"
+        with:
+          cluster_name: kind
+          node_image: kindest/node:${{ env.KIND_NODE_VERSION }}
+          registry: true
+          version: ${{ env.KIND_VERSION }}
+
+      - name: Install OLM
+        env:
+          # renovate: datasource=github-releases depName=operator-framework/operator-lifecycle-manager
+          OLM_VERSION: "v0.45.0"
+        run: make operator-sdk && ./bin/operator-sdk olm install --version "$OLM_VERSION"
+
+      - name: Build and deploy operator via OLM
+        run: make e2e-olm-setup
+        env:
+          IMAGE_REGISTRY: kind-registry:5000
+
+      - name: Run e2e tests
+        run: make e2e-test-ci
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          echo "=== All pods ==="
+          kubectl get pods -A
+          echo "=== Pods in keda namespace ==="
+          kubectl describe pods -n keda
+          echo "=== OLM resources ==="
+          kubectl get csv,sub,installplan -n keda 2>/dev/null || true
+          echo "=== Operator logs ==="
+          kubectl logs -n keda -l app.kubernetes.io/part-of=keda-olm-operator --tail=200 || true
+
+  e2e-upgrade:
+    name: E2E Upgrade Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26'
+
+      - name: Create kind cluster with local registry
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        env:
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kind
+          KIND_VERSION: "v0.32.0"
+          # renovate: datasource=docker depName=kindest/node
+          KIND_NODE_VERSION: "v1.36.1"
+        with:
+          cluster_name: kind
+          node_image: kindest/node:${{ env.KIND_NODE_VERSION }}
+          registry: true
+          version: ${{ env.KIND_VERSION }}
+
+      - name: Install OLM
+        env:
+          # renovate: datasource=github-releases depName=operator-framework/operator-lifecycle-manager
+          OLM_VERSION: "v0.45.0"
+        run: make operator-sdk && ./bin/operator-sdk olm install --version "$OLM_VERSION"
+
+      - name: Build operator and bundle images
+        run: make e2e-olm-upgrade-build
+        env:
+          IMAGE_REGISTRY: kind-registry:5000
+
+      - name: Install previous operator version
+        run: make e2e-olm-upgrade-install
+        env:
+          IMAGE_REGISTRY: kind-registry:5000
+
+      - name: Deploy workloads under previous version
+        run: make e2e-upgrade-test-pre-ci
+
+      - name: Upgrade operator to current build
+        run: make e2e-olm-upgrade-apply
+        env:
+          IMAGE_REGISTRY: kind-registry:5000
+
+      - name: Verify workloads survive upgrade
+        run: make e2e-upgrade-test-post-ci
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          echo "=== All pods ==="
+          kubectl get pods -A
+          echo "=== Pods in keda namespace ==="
+          kubectl describe pods -n keda
+          echo "=== OLM resources ==="
+          kubectl get csv,sub,installplan -n keda 2>/dev/null || true
+          echo "=== Operator logs ==="
+          kubectl logs -n keda -l app.kubernetes.io/part-of=keda-olm-operator --tail=200 || true
+          echo "=== KEDA operator logs ==="
+          kubectl logs -n keda deployment/keda-operator --tail=200 || true
+          echo "=== Workload namespace ==="
+          kubectl get all -n keda-upgrade-test 2>/dev/null || true
+          echo "=== ScaledObjects ==="
+          kubectl get scaledobjects -n keda-upgrade-test -o yaml 2>/dev/null || true
+          echo "=== HPAs ==="
+          kubectl get hpa -n keda-upgrade-test -o yaml 2>/dev/null || true

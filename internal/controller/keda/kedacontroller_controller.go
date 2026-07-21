@@ -359,7 +359,7 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if instance.GetDeletionTimestamp() != nil {
-		if contains(instance.GetFinalizers(), kedaControllerFinalizer) {
+		if controllerutil.ContainsFinalizer(instance, kedaControllerFinalizer) {
 			// Run finalization logic for kedaControllerFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
@@ -369,9 +369,8 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// Remove kedaControllerFinalizer. Once all finalizers have been
 			// removed, the object will be deleted.
 			patch := client.MergeFrom(instance.DeepCopy())
-			instance.SetFinalizers(remove(instance.GetFinalizers(), kedaControllerFinalizer))
-			err := r.Patch(ctx, instance, patch)
-			if err != nil {
+			controllerutil.RemoveFinalizer(instance, kedaControllerFinalizer)
+			if err := r.Patch(ctx, instance, patch); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -379,7 +378,7 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Add finalizer for this CR
-	if !contains(instance.GetFinalizers(), kedaControllerFinalizer) {
+	if !controllerutil.ContainsFinalizer(instance, kedaControllerFinalizer) {
 		if err := r.addFinalizer(ctx, logger, instance); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -428,6 +427,14 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if err := r.installHTTPAddon(ctx, logger, instance, status); err != nil {
 		status.MarkInstallFailed("Not able to install HTTP Add-on")
+		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, statusErr)
+		}
+		return ctrl.Result{}, err
+	}
+
+	if err := r.ensurePrometheusMonitoringRBAC(ctx, logger, instance); err != nil {
+		status.MarkInstallFailed("Not able to ensure Prometheus monitoring RBAC")
 		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
 			err = fmt.Errorf("got error: %s and then another: %s", err, statusErr)
 		}
@@ -1280,7 +1287,8 @@ func (r *KedaControllerReconciler) ensureOpenshiftCABundleConfigMap(ctx context.
 	}
 
 	if err := controllerutil.SetControllerReference(instance, configMap, r.Scheme); err != nil {
-		if !goerrors.Is(err, &controllerutil.AlreadyOwnedError{}) {
+		var alreadyOwnedErr *controllerutil.AlreadyOwnedError
+		if !goerrors.As(err, &alreadyOwnedErr) {
 			logger.Error(err, "Failed to check Controller Reference for ConfigMap")
 			return err
 		}
@@ -1350,7 +1358,8 @@ func (r *KedaControllerReconciler) ensureMetricsServerAuditLogPolicyConfigMap(ct
 	}
 
 	if err := controllerutil.SetControllerReference(instance, configMap, r.Scheme); err != nil {
-		if !goerrors.Is(err, &controllerutil.AlreadyOwnedError{}) {
+		var alreadyOwnedErr *controllerutil.AlreadyOwnedError
+		if !goerrors.As(err, &alreadyOwnedErr) {
 			logger.Error(err, "failed to check Controller Reference for ConfigMap")
 			return err
 		}
@@ -1449,11 +1458,11 @@ func (r *KedaControllerReconciler) installAdmissionWebhooks(ctx context.Context,
 	}
 
 	if instance.Spec.AdmissionWebhooks.Volumes != nil {
-		transforms = append(transforms, transform.ReplaceDeploymentVolumes(instance.Spec.Operator.Volumes, r.Scheme))
+		transforms = append(transforms, transform.ReplaceDeploymentVolumes(instance.Spec.AdmissionWebhooks.Volumes, r.Scheme))
 	}
 
 	if instance.Spec.AdmissionWebhooks.VolumeMounts != nil {
-		transforms = append(transforms, transform.ReplaceDeploymentVolumeMounts(instance.Spec.Operator.VolumeMounts, r.Scheme))
+		transforms = append(transforms, transform.ReplaceDeploymentVolumeMounts(instance.Spec.AdmissionWebhooks.VolumeMounts, r.Scheme))
 	}
 
 	// add arbitrary args defined by user
