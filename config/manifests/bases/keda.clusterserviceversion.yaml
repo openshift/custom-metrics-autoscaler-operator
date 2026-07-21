@@ -172,7 +172,7 @@ metadata:
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/kedacore/keda-olm-operator
     support: KEDA Community
-  name: keda.v2.19.0
+  name: keda.v2.20.1
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -777,6 +777,6 @@ spec:
   minKubeVersion: 1.23.0
   provider:
     name: KEDA Community
-  replaces: keda.v2.18.3
+  replaces: keda.v2.19.0
   selector: {}
-  version: 2.19.0
+  version: 2.20.1

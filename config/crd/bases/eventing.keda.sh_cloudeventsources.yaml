@@ -6,7 +6,7 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.20.1
   labels:
     app.kubernetes.io/part-of: keda-operator
-    app.kubernetes.io/version: 2.19.0
+    app.kubernetes.io/version: 2.20.1
   name: cloudeventsources.eventing.keda.sh
 spec:
   group: eventing.keda.sh

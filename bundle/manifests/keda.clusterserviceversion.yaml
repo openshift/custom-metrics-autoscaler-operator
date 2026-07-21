@@ -164,15 +164,15 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Cloud Provider
     certified: "false"
-    containerImage: ghcr.io/kedacore/keda-olm-operator:2.19.0
-    createdAt: "2026-04-22T03:27:54Z"
+    containerImage: ghcr.io/kedacore/keda-olm-operator:2.20.1
+    createdAt: "2026-06-18T15:28:40Z"
     description: Operator that provides KEDA, a Kubernetes-based event driver autoscaler
     operatorframework.io/suggested-namespace: keda
     operators.operatorframework.io/builder: operator-sdk-v1.38.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/kedacore/keda-olm-operator
     support: KEDA Community
-  name: keda.v2.19.0
+  name: keda.v2.20.1
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -777,6 +777,6 @@ spec:
   minKubeVersion: 1.23.0
   provider:
     name: KEDA Community
-  replaces: keda.v2.18.3
+  replaces: keda.v2.19.0
   selector: {}
-  version: 2.19.0
+  version: 2.20.1
