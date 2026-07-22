@@ -92,17 +92,74 @@ test: manifests generate fmt vet envtest
 
 .PHONY: e2e-test
 e2e-test: ## Run e2e smoke tests against existing cluster.
-	go test -tags=e2e -count=1 -timeout=10m -v ./test/e2e/...
+	go test -tags=e2e -count=1 -timeout=10m -v -run=TestKedaControllerLifecycle ./test/e2e/...
 
 .PHONY: e2e-test-ci
 e2e-test-ci: ## Run e2e smoke tests (CI mode with GitHub Actions output).
-	go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --rerun-fails=2 --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m
+	go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --rerun-fails=2 --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaControllerLifecycle
+
+.PHONY: e2e-upgrade-test-pre
+e2e-upgrade-test-pre: ## Run pre-upgrade e2e test: deploy workloads under the previous KEDA version.
+	go test -tags=e2e -count=1 -timeout=10m -v -run=TestKedaUpgradeSetup ./test/e2e/...
+
+.PHONY: e2e-upgrade-test-pre-ci
+e2e-upgrade-test-pre-ci: ## Run pre-upgrade e2e test (CI mode).
+	go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaUpgradeSetup
+
+.PHONY: e2e-upgrade-test-post
+e2e-upgrade-test-post: ## Run post-upgrade e2e test: verify workloads survived the upgrade.
+	go test -tags=e2e -count=1 -timeout=10m -v -run=TestKedaUpgradeVerify ./test/e2e/...
+
+.PHONY: e2e-upgrade-test-post-ci
+e2e-upgrade-test-post-ci: ## Run post-upgrade e2e test (CI mode).
+	go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaUpgradeVerify
 
 .PHONY: e2e-olm-setup
 e2e-olm-setup: build bundle docker-build docker-push bundle-build bundle-push ## Deploy operator via OLM for e2e testing.
 	kubectl create namespace keda --dry-run=client -o yaml | kubectl apply --server-side -f -
 	kubectl annotate namespace keda keda-olm-operator/create-default-controller=skip --overwrite
 	$(OPERATOR_SDK) run bundle $(BUNDLE) --namespace keda --use-http --timeout 5m $(BUNDLE_RUN_OPTS)
+	kubectl rollout status deployment/keda-olm-operator -n keda --timeout=120s
+
+# Previous KEDA version used as the upgrade starting point, auto-detected from
+# the latest GitHub release. Uses deferred simple variable expansion so the shell
+# command runs at most once and only when actually referenced.
+E2E_PREVIOUS_KEDA_VERSION ?= $(eval E2E_PREVIOUS_KEDA_VERSION := $$(shell curl -s https://api.github.com/repos/kedacore/keda-olm-operator/releases/latest | jq -r '.name[1:]'))$(E2E_PREVIOUS_KEDA_VERSION)
+# Synthetic semver for the upgrade bundle CSV so OLM sees a distinct, newer entry.
+E2E_UPGRADE_CSV_FAKE_VERSION ?= 1000.0.0
+E2E_PREVIOUS_BUNDLE = $(IMAGE_REGISTRY)/$(IMAGE_REPO)/keda-olm-operator-bundle:$(E2E_PREVIOUS_KEDA_VERSION)
+
+.PHONY: e2e-olm-upgrade-build
+e2e-olm-upgrade-build: operator-sdk ## Build operator and both bundle images for upgrade testing.
+	$(MAKE) build docker-build docker-push
+	printf 'FROM scratch\nCOPY manifests/ /manifests/\nCOPY metadata/ /metadata/\n' | \
+		docker build -f - -t $(E2E_PREVIOUS_BUNDLE) \
+		--label operators.operatorframework.io.bundle.mediatype.v1=registry+v1 \
+		--label operators.operatorframework.io.bundle.manifests.v1=manifests/ \
+		--label operators.operatorframework.io.bundle.metadata.v1=metadata/ \
+		--label operators.operatorframework.io.bundle.package.v1=keda \
+		--label operators.operatorframework.io.bundle.channels.v1=stable \
+		--label operators.operatorframework.io.bundle.channel.default.v1=stable \
+		keda/$(E2E_PREVIOUS_KEDA_VERSION)
+	docker push $(E2E_PREVIOUS_BUNDLE)
+	$(MAKE) bundle
+	cd bundle/manifests && \
+		sed -i 's/^  name: keda\.v.*/  name: keda.v$(E2E_UPGRADE_CSV_FAKE_VERSION)/' keda.clusterserviceversion.yaml && \
+		sed -i 's/^  version: .*/  version: $(E2E_UPGRADE_CSV_FAKE_VERSION)/' keda.clusterserviceversion.yaml && \
+		sed -i 's/replaces: keda\.v.*/replaces: keda.v$(E2E_PREVIOUS_KEDA_VERSION)/' keda.clusterserviceversion.yaml && \
+		sed -i '/matchLabels:/,/name:/{/app.kubernetes.io\/version:/d}' keda.clusterserviceversion.yaml
+	$(MAKE) bundle-build bundle-push
+
+.PHONY: e2e-olm-upgrade-install
+e2e-olm-upgrade-install: operator-sdk ## Install the previous operator version via OLM.
+	kubectl create namespace keda --dry-run=client -o yaml | kubectl apply --server-side -f -
+	kubectl annotate namespace keda keda-olm-operator/create-default-controller=skip --overwrite
+	$(OPERATOR_SDK) run bundle $(E2E_PREVIOUS_BUNDLE) --namespace keda --use-http --timeout 5m $(BUNDLE_RUN_OPTS)
+	kubectl rollout status deployment/keda-olm-operator -n keda --timeout=120s
+
+.PHONY: e2e-olm-upgrade-apply
+e2e-olm-upgrade-apply: operator-sdk ## Upgrade the operator to the current bundle.
+	$(OPERATOR_SDK) run bundle-upgrade $(BUNDLE) --namespace keda --use-http --timeout 5m $(BUNDLE_RUN_OPTS)
 	kubectl rollout status deployment/keda-olm-operator -n keda --timeout=120s
 
 .PHONY: e2e-olm-cleanup
