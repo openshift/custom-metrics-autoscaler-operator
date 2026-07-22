@@ -90,6 +90,25 @@ test-deployment: manifests generate fmt vet envtest ## Test OLM deployment.
 test: manifests generate fmt vet envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type unit
 
+.PHONY: e2e-test
+e2e-test: ## Run e2e smoke tests against existing cluster.
+	go test -tags=e2e -count=1 -timeout=10m -v ./test/e2e/...
+
+.PHONY: e2e-test-ci
+e2e-test-ci: ## Run e2e smoke tests (CI mode with GitHub Actions output).
+	go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --rerun-fails=2 --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m
+
+.PHONY: e2e-olm-setup
+e2e-olm-setup: build bundle docker-build docker-push bundle-build bundle-push ## Deploy operator via OLM for e2e testing.
+	kubectl create namespace keda --dry-run=client -o yaml | kubectl apply --server-side -f -
+	kubectl annotate namespace keda keda-olm-operator/create-default-controller=skip --overwrite
+	$(OPERATOR_SDK) run bundle $(BUNDLE) --namespace keda --use-http --timeout 5m $(BUNDLE_RUN_OPTS)
+	kubectl rollout status deployment/keda-olm-operator -n keda --timeout=120s
+
+.PHONY: e2e-olm-cleanup
+e2e-olm-cleanup: operator-sdk ## Clean up OLM-deployed operator.
+	- $(OPERATOR_SDK) cleanup keda --namespace keda
+
 ##@ Build
 
 build: generate fmt vet ## Build manager binary.
@@ -172,9 +191,14 @@ $(LOCALBIN):
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.3.0
+# renovate: datasource=github-releases depName=operator-framework/operator-sdk
+OPERATOR_SDK_VERSION ?= v1.38.0
+# renovate: datasource=go depName=gotest.tools/gotestsum
+GOTESTSUM_VERSION ?= v1.13.0
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Install controller-gen from vendor dir if necessary.
@@ -194,6 +218,17 @@ $(KUSTOMIZE): $(LOCALBIN)
 envtest: $(ENVTEST) ## Install envtest-setup from vendor dir if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest
+
+.PHONY: operator-sdk
+operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk locally if necessary.
+$(OPERATOR_SDK): $(LOCALBIN)
+	@if test -x $(LOCALBIN)/operator-sdk && ! $(LOCALBIN)/operator-sdk version | grep -q $(OPERATOR_SDK_VERSION); then \
+	    echo "$(LOCALBIN)/operator-sdk version is not expected $(OPERATOR_SDK_VERSION). Removing it before downloading."; \
+	    rm -rf $(LOCALBIN)/operator-sdk; \
+	fi
+	test -s $(LOCALBIN)/operator-sdk || \
+	    { curl -sSLo $(LOCALBIN)/operator-sdk https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$$(go env GOOS)_$$(go env GOARCH) && \
+	    chmod +x $(LOCALBIN)/operator-sdk; }
 
 # Run golangci against code
 .PHONY: golangci
