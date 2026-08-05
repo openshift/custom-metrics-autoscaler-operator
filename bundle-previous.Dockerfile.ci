@@ -4,7 +4,7 @@
 # CSV is the one the most recent release's CSV replaces, so that
 # 'operator-sdk run bundle-upgrade' has a valid upgrade edge.
 
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.25-openshift-4.22 as builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.26-openshift-5.0 as builder
 
 # we need to build some things so we need the sources
 COPY . . 
