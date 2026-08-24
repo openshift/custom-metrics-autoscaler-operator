@@ -1028,6 +1028,10 @@ spec:
                       Pod priority
                       https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                     type: string
+                  replicas:
+                    description: Number of replicas for the deployment
+                    format: int32
+                    type: integer
                   resources:
                     description: |-
                       Manage resource requests & limits
@@ -4274,8 +4278,7 @@ spec:
                           https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                         type: string
                       replicas:
-                        description: Number of replicas for the HTTP Add-on Interceptor
-                          deployment
+                        description: Number of replicas for the deployment
                         format: int32
                         type: integer
                       resources:
@@ -7524,8 +7527,7 @@ spec:
                           https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                         type: string
                       replicas:
-                        description: Number of replicas for the HTTP Add-on Operator
-                          deployment
+                        description: Number of replicas for the deployment
                         format: int32
                         type: integer
                       resources:
@@ -10774,8 +10776,7 @@ spec:
                           https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                         type: string
                       replicas:
-                        description: Number of replicas for the HTTP Add-on Scaler
-                          deployment
+                        description: Number of replicas for the deployment
                         format: int32
                         type: integer
                       resources:
@@ -14044,6 +14045,10 @@ spec:
                       Pod priority
                       https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                     type: string
+                  replicas:
+                    description: Number of replicas for the deployment
+                    format: int32
+                    type: integer
                   resources:
                     description: |-
                       Manage resource requests & limits
@@ -17127,6 +17132,10 @@ spec:
                       Pod priority
                       https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                     type: string
+                  replicas:
+                    description: Number of replicas for the deployment
+                    format: int32
+                    type: integer
                   resources:
                     description: |-
                       Manage resource requests & limits

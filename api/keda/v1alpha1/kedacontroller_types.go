@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
@@ -325,6 +326,9 @@ type HTTPAddonStatus struct {
 }
 
 type GenericDeploymentSpec struct {
+	// Number of replicas for the deployment
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
 
 	// Annotations applied to the Deployment
 	// https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
@@ -377,6 +381,24 @@ type GenericDeploymentSpec struct {
 	Volumes []corev1.Volume `json:"volumes,omitempty"`
 	// +optional
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+}
+
+// Validate validates the GenericDeploymentSpec fields.
+// Follows cluster-resource-override-admission-operator pattern:
+// - Allows replicas: 0 (for maintenance/scaling-down)
+// - Maximum replicas: 2 (for HA deployments)
+// - Blocks negative values (invalid)
+// - Allows nil (uses base manifest default)
+func (g *GenericDeploymentSpec) Validate() error {
+	if g.Replicas != nil {
+		if *g.Replicas < 0 {
+			return fmt.Errorf("invalid value for Replicas: %d, must be >= 0", *g.Replicas)
+		}
+		if *g.Replicas > 2 {
+			return fmt.Errorf("invalid value for Replicas: %d, must be <= 2", *g.Replicas)
+		}
+	}
+	return nil
 }
 
 // KedaControllerStatus defines the observed state of KedaController

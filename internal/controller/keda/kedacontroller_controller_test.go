@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -445,6 +446,147 @@ var _ = Describe("Testing audit flags", func() {
 
 		})
 	})
+
+	var _ = Describe("Configuring replicas", func() {
+		const (
+			kedaManifestFilepath  = "../../../config/samples/keda_v1alpha1_kedacontroller.yaml"
+			operatorName          = "keda-operator"
+			metricsServerName     = "keda-metrics-apiserver"
+			admissionWebhooksName = "keda-admission"
+			namespace             = "keda"
+		)
+
+		var (
+			ctx      = context.Background()
+			timeout  = time.Second * 60
+			interval = time.Millisecond * 250
+			scheme   *runtime.Scheme
+			manifest mf.Manifest
+			err      error
+			dep      = &appsv1.Deployment{}
+		)
+
+		BeforeEach(func() {
+			scheme = k8sManager.GetScheme()
+			manifest, err = createManifest(kedaManifestFilepath, k8sClient)
+			Expect(err).To(BeNil())
+		})
+
+		Context("When setting operator.replicas", func() {
+			It("Should set replicas to 2 in keda-operator Deployment", func() {
+				By("Setting operator.replicas to 2")
+				manifest, err = changeAttribute(manifest, "operatorReplicas", "2", scheme, "operator-replicas-2")
+				Expect(err).To(BeNil())
+				Expect(manifest.Apply()).Should(Succeed())
+
+				By("Waiting for the operator deployment to reflect the changes")
+				Eventually(func() error {
+					return deploymentHasRolledOut(operatorName, namespace, "operator-replicas-2")
+				}, timeout, interval).Should(Succeed())
+
+				By("Checking that the deployment has 2 replicas")
+				u, err := getObject(ctx, "Deployment", operatorName, namespace, k8sClient)
+				Expect(err).To(BeNil())
+				err = scheme.Convert(u, dep, nil)
+				Expect(err).To(BeNil())
+				Expect(dep.Spec.Replicas).ToNot(BeNil())
+				Expect(*dep.Spec.Replicas).To(Equal(int32(2)))
+			})
+
+			It("Should default to 1 replica when replicas is not set (nil)", func() {
+				By("Setting operator.replicas to nil (empty string)")
+				manifest, err = changeAttribute(manifest, "operatorReplicas", "", scheme, "operator-replicas-nil")
+				Expect(err).To(BeNil())
+				Expect(manifest.Apply()).Should(Succeed())
+
+				By("Waiting for the operator deployment to reflect the changes")
+				Eventually(func() error {
+					return deploymentHasRolledOut(operatorName, namespace, "operator-replicas-nil")
+				}, timeout, interval).Should(Succeed())
+
+				By("Checking that the deployment defaults to 1 replica")
+				u, err := getObject(ctx, "Deployment", operatorName, namespace, k8sClient)
+				Expect(err).To(BeNil())
+				err = scheme.Convert(u, dep, nil)
+				Expect(err).To(BeNil())
+				Expect(dep.Spec.Replicas).ToNot(BeNil())
+				Expect(*dep.Spec.Replicas).To(Equal(int32(1)))
+			})
+
+			It("Should update replicas when changed after initial deployment", func() {
+				By("Initially setting operator.replicas to 1")
+				manifest, err = changeAttribute(manifest, "operatorReplicas", "1", scheme, "operator-replicas-update-1")
+				Expect(err).To(BeNil())
+				Expect(manifest.Apply()).Should(Succeed())
+
+				Eventually(func() error {
+					return deploymentHasRolledOut(operatorName, namespace, "operator-replicas-update-1")
+				}, timeout, interval).Should(Succeed())
+
+				By("Changing operator.replicas to 2")
+				manifest, err = changeAttribute(manifest, "operatorReplicas", "2", scheme, "operator-replicas-update-2")
+				Expect(err).To(BeNil())
+				Expect(manifest.Apply()).Should(Succeed())
+
+				By("Waiting for the deployment to update")
+				Eventually(func() error {
+					return deploymentHasRolledOut(operatorName, namespace, "operator-replicas-update-2")
+				}, timeout, interval).Should(Succeed())
+
+				By("Checking that the deployment now has 2 replicas")
+				u, err := getObject(ctx, "Deployment", operatorName, namespace, k8sClient)
+				Expect(err).To(BeNil())
+				err = scheme.Convert(u, dep, nil)
+				Expect(err).To(BeNil())
+				Expect(dep.Spec.Replicas).ToNot(BeNil())
+				Expect(*dep.Spec.Replicas).To(Equal(int32(2)))
+			})
+		})
+
+		Context("When setting metricsServer.replicas", func() {
+			It("Should set replicas to 2 in keda-metrics-apiserver Deployment", func() {
+				By("Setting metricsServer.replicas to 2")
+				manifest, err = changeAttribute(manifest, "metricsServerReplicas", "2", scheme, "metricsserver-replicas-2")
+				Expect(err).To(BeNil())
+				Expect(manifest.Apply()).Should(Succeed())
+
+				By("Waiting for the metrics server deployment to reflect the changes")
+				Eventually(func() error {
+					return deploymentHasRolledOut(metricsServerName, namespace, "metricsserver-replicas-2")
+				}, timeout, interval).Should(Succeed())
+
+				By("Checking that the deployment has 2 replicas")
+				u, err := getObject(ctx, "Deployment", metricsServerName, namespace, k8sClient)
+				Expect(err).To(BeNil())
+				err = scheme.Convert(u, dep, nil)
+				Expect(err).To(BeNil())
+				Expect(dep.Spec.Replicas).ToNot(BeNil())
+				Expect(*dep.Spec.Replicas).To(Equal(int32(2)))
+			})
+		})
+
+		Context("When setting admissionWebhooks.replicas", func() {
+			It("Should set replicas to 2 in keda-admission Deployment", func() {
+				By("Setting admissionWebhooks.replicas to 2")
+				manifest, err = changeAttribute(manifest, "admissionWebhooksReplicas", "2", scheme, "admission-replicas-2")
+				Expect(err).To(BeNil())
+				Expect(manifest.Apply()).Should(Succeed())
+
+				By("Waiting for the admission webhooks deployment to reflect the changes")
+				Eventually(func() error {
+					return deploymentHasRolledOut(admissionWebhooksName, namespace, "admission-replicas-2")
+				}, timeout, interval).Should(Succeed())
+
+				By("Checking that the deployment has 2 replicas")
+				u, err := getObject(ctx, "Deployment", admissionWebhooksName, namespace, k8sClient)
+				Expect(err).To(BeNil())
+				err = scheme.Convert(u, dep, nil)
+				Expect(err).To(BeNil())
+				Expect(dep.Spec.Replicas).ToNot(BeNil())
+				Expect(*dep.Spec.Replicas).To(Equal(int32(2)))
+			})
+		})
+	})
 })
 
 func getDepArg(dep *appsv1.Deployment, prefix string, containerName string) (string, error) {
@@ -505,6 +647,39 @@ func changeAttribute(manifest mf.Manifest, attr string, value string, scheme *ru
 			kedaControllerInstance.Spec.MetricsServer.MaxBackup = value
 		case "auditLogMaxSize":
 			kedaControllerInstance.Spec.MetricsServer.MaxSize = value
+		case "operatorReplicas":
+			if value == "" {
+				kedaControllerInstance.Spec.Operator.Replicas = nil
+			} else {
+				replicas, err := strconv.ParseInt(value, 10, 32)
+				if err != nil {
+					return err
+				}
+				replicasInt32 := int32(replicas)
+				kedaControllerInstance.Spec.Operator.Replicas = &replicasInt32
+			}
+		case "metricsServerReplicas":
+			if value == "" {
+				kedaControllerInstance.Spec.MetricsServer.Replicas = nil
+			} else {
+				replicas, err := strconv.ParseInt(value, 10, 32)
+				if err != nil {
+					return err
+				}
+				replicasInt32 := int32(replicas)
+				kedaControllerInstance.Spec.MetricsServer.Replicas = &replicasInt32
+			}
+		case "admissionWebhooksReplicas":
+			if value == "" {
+				kedaControllerInstance.Spec.AdmissionWebhooks.Replicas = nil
+			} else {
+				replicas, err := strconv.ParseInt(value, 10, 32)
+				if err != nil {
+					return err
+				}
+				replicasInt32 := int32(replicas)
+				kedaControllerInstance.Spec.AdmissionWebhooks.Replicas = &replicasInt32
+			}
 		default:
 			return errors.New("Not a valid attribute")
 		}
