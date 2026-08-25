@@ -704,8 +704,9 @@ spec:
               - args:
                 - -c
                 - export KEDA_OPERATOR_IMAGE=$RELATED_IMAGE_1; export KEDA_METRICS_SERVER_IMAGE=$RELATED_IMAGE_2;
-                  export KEDA_ADMISSION_WEBHOOKS_IMAGE=$RELATED_IMAGE_3; exec /manager
-                  "$0" "$@"
+                  export KEDA_ADMISSION_WEBHOOKS_IMAGE=$RELATED_IMAGE_3; export KEDA_HTTP_ADDON_INTERCEPTOR_IMAGE=$RELATED_IMAGE_4;
+                  export KEDA_HTTP_ADDON_OPERATOR_IMAGE=$RELATED_IMAGE_5; export KEDA_HTTP_ADDON_SCALER_IMAGE=$RELATED_IMAGE_6;
+                  exec /manager "$0" "$@"
                 - --leader-elect
                 - --zap-log-level=info
                 - --zap-encoder=console
@@ -723,6 +724,12 @@ spec:
                   value: CMA_OPERAND_PLACEHOLDER_2
                 - name: RELATED_IMAGE_3
                   value: CMA_OPERAND_PLACEHOLDER_3
+                - name: RELATED_IMAGE_4
+                  value: CMA_OPERAND_PLACEHOLDER_4
+                - name: RELATED_IMAGE_5
+                  value: CMA_OPERAND_PLACEHOLDER_5
+                - name: RELATED_IMAGE_6
+                  value: CMA_OPERAND_PLACEHOLDER_6
                 image: ghcr.io/kedacore/keda-olm-operator:2.19.0
                 imagePullPolicy: Always
                 livenessProbe:

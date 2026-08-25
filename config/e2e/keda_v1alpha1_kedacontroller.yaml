@@ -29,4 +29,7 @@ spec:
     logLevel: info
     logEncoder: console
 
+  httpAddon:
+    enabled: true
+
   serviceAccount: {}
