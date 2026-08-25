@@ -210,17 +210,6 @@ sign-images: ## Sign KEDA images published on GitHub Container Registry
 # If the operand/upstream changes their file_auth overlay (config/e2e/file_auth/patch_operator.yml
 # in the keda repo), or otherwise changes their e2e setup in a way that has olm operator 
 # ramifications, we may need to adjust this to stay in sync.
-.PHONY: e2e-cma-setup
-e2e-cma-setup: ## Set up KEDA for CMA e2e tests (called by CI after OLM install)
-	oc apply -n keda -f config/e2e/file-auth-secret.yaml
-	oc apply -n keda -f config/e2e/keda_v1alpha1_kedacontroller.yaml
-	sleep 30
-	oc get deployment -n keda
-	oc wait --for condition=Available -n keda deployment keda-admission --timeout 10m
-	oc wait --for condition=Available -n keda deployment keda-metrics-apiserver --timeout 10m
-	oc wait --for condition=Available -n keda deployment keda-operator --timeout 10m
-	oc get deployment -n keda
-
 ##@ E2E Testing
 
 # e2e-cma-setup is called by CI after the CMA operator is installed via OLM
@@ -245,7 +234,7 @@ e2e-cma-setup: ## Set up KEDA for CMA e2e tests (called by CI after OLM install)
 # in the keda repo), or otherwise changes their e2e setup in a way that has olm operator 
 # ramifications, we may need to adjust this to stay in sync.
 .PHONY: e2e-cma-setup
-e2e-cma-setup: ## Set up KEDA for CMA e2e tests (called by CI after OLM install)
+e2e-cma-setup: ## Set up KEDA + HTTP Add-on for CMA e2e tests (called by CI after OLM install)
 	oc apply -n keda -f config/e2e/file-auth-secret.yaml
 	oc apply -n keda -f config/e2e/keda_v1alpha1_kedacontroller.yaml
 	sleep 30
@@ -253,6 +242,9 @@ e2e-cma-setup: ## Set up KEDA for CMA e2e tests (called by CI after OLM install)
 	oc wait --for condition=Available -n keda deployment keda-admission --timeout 10m
 	oc wait --for condition=Available -n keda deployment keda-metrics-apiserver --timeout 10m
 	oc wait --for condition=Available -n keda deployment keda-operator --timeout 10m
+	oc wait --for condition=Available -n keda deployment keda-add-ons-http-operator --timeout 10m
+	oc wait --for condition=Available -n keda deployment keda-add-ons-http-interceptor --timeout 10m
+	oc wait --for condition=Available -n keda deployment keda-add-ons-http-scaler --timeout 10m
 	oc get deployment -n keda
 
 ##@ Deployment
