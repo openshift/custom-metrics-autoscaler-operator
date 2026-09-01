@@ -67,17 +67,19 @@ echo "Using a copy of previous release version $prev as a starting point for $ve
 # using tar for easy overwrite of existing files (for idempotency, in case the script gets runs more than once)
 mkdir -p keda/$ver
 tar cf - --directory keda/$prev . | tar xvf - --directory keda/$ver
+rm -f keda/${ver}/manifests/cma.v*.clusterserviceversion.yaml
 echo "Updating version string in all manifests in keda/${ver}/manifests/"
 sed -i 's/\(app.kubernetes.io\/version:\) [0-9.][0-9.]*/\1 '${ver}/ keda/${ver}/manifests/*
 
 date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "Updating all version strings, 'replaces' and 'createdAt' fields in base CSV"
-sed -i "s/${prev//./\\.}/${ver}/; s/^\\(  replaces: *keda.v\\)[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*/\1${prev}/; s/\\(  *createdAt: *\\)\"?[0-9-]*T[0-9:.]*Z\"/\1\"${date}\"/" config/manifests/bases/keda.clusterserviceversion.yaml
+sed -i "s/${prev//./\\.}/${ver}/; s/^\\(  replaces: *keda.v\\)[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*/\1${prev}/; s/^\\([[:space:]]*createdAt: \\).*/\1\"${date}\"/" config/manifests/bases/keda.clusterserviceversion.yaml
 
 rm -f keda/${ver}/manifests/keda.v${prev}.clusterserviceversion.yaml
 echo "Creating release CSV keda.v${ver}.clusterserviceversion.yaml"
 cp config/manifests/bases/keda.clusterserviceversion.yaml keda/${ver}/manifests/keda.v${ver}.clusterserviceversion.yaml
 sed -i 's#\(image: ghcr.io/kedacore/keda-olm-operator\):main#\1:'"${ver}"'#' keda/${ver}/manifests/keda.v${ver}.clusterserviceversion.yaml
+sed -i 's#\(app.kubernetes.io/version:\) main#\1 '"${ver}"'#' keda/${ver}/manifests/keda.v${ver}.clusterserviceversion.yaml
 
 echo "Getting CRD list from resources/keda.yaml"
 crds="$(awk 'BEGIN {RS="\n---\n";} /\nkind: CustomResourceDefinition\n/ {print "---";print;}' resources/keda.yaml | sed -n '/^metadata:/,/^[^ ]/ { s/  name: *//p; }')"
