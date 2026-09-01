@@ -19,6 +19,7 @@ require (
 	github.com/openshift/api v0.0.0-20260615110019-261e3a0546f3
 	github.com/openshift/controller-runtime-common v0.0.0-20260428152732-64ee174f5e2e
 	github.com/openshift/library-go v0.0.0-20260615113748-bc9d4056464b
+	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.36.0
 	k8s.io/apimachinery v0.36.0
 	k8s.io/apiserver v0.36.0
@@ -115,7 +116,6 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/gotestsum v1.13.0 // indirect
 	k8s.io/apiextensions-apiserver v0.36.0 // indirect
