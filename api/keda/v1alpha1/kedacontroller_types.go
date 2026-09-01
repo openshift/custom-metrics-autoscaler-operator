@@ -361,7 +361,6 @@ type GenericDeploymentSpec struct {
 	Volumes []corev1.Volume `json:"volumes,omitempty"`
 	// +optional
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
-
 	// Environment variables set on the component's container, overriding any
 	// variable of the same name that the operator sets itself
 	// https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/

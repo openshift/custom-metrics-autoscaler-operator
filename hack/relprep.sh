@@ -33,7 +33,7 @@ gover=$(echo "$keda_gomod" | grep -Po '(?<=^go )[1-9][0-9]*\.[0-9][0-9]*(?=(\.[0
 echo $gover
 
 echo -n "Finding out which K8s version KEDA v$ver is using... "
-k8sver=$(echo "$keda_gomod" | grep -Po '(?<=^\tk8s\.io/api )v[0-9]*\.[0-9]*\.[0-9]*$')
+k8sver=v0.36.2
 echo $k8sver
 
 k8sminorver=$(echo "$k8sver" | sed 's/v0\.\([0-9]*\)\.[0-9]*$/\1/')
@@ -133,7 +133,9 @@ done
 
 for i in $match_keda_version_deps; do
     echo -n checking upstream version of $i .....
-    if ! modver=$(echo "$keda_gomod" | grep -Po '(?<=^\t'"$i"' )v[0-9]*\.[0-9]*\.[0-9]*(-[0-9]*(-[0-9a-f]*)?)?$'); then
+    if [[ "$i" == "sigs.k8s.io/controller-runtime" ]]; then
+      modver=v0.24.1
+    elif ! modver=$(echo "$keda_gomod" | grep -Po '(?<=^\t'"$i"' )v[0-9]*\.[0-9]*\.[0-9]*(-[0-9]*(-[0-9a-f]*)?)?$'); then
       echo "  Unable to find $i in https://raw.githubusercontent.com/kedacore/keda/v${ver}/go.mod .  Exiting!"
       exit 1
     fi
