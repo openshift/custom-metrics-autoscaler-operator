@@ -303,14 +303,11 @@ func (r *KedaControllerReconciler) tlsEnvVarTransforms(ctx context.Context, logg
 		logger.Error(err, "Failed to get TLS profile from APIServer; skipping TLS env var update")
 		return nil
 	}
-	minTLSVersion, ianaCiphers := util.ConvertTLSProfileSpec(profile)
-	if len(ianaCiphers) != len(profile.Ciphers) {
-		logger.Info("Some TLS profile ciphers could not be converted to IANA names and were dropped",
-			"requested", profile.Ciphers, "converted", ianaCiphers)
-	}
+	minTLSVersion := strings.TrimPrefix(string(profile.MinTLSVersion), "Version")
+	cipherList := strings.Join(profile.Ciphers, ",")
 	return []mf.Transformer{
 		transform.EnsureEnvVarInAllContainers(kedaTLSMinVersionEnvVar, minTLSVersion, r.Scheme),
-		transform.EnsureEnvVarInAllContainers(kedaTLSCipherListEnvVar, strings.Join(ianaCiphers, ","), r.Scheme),
+		transform.EnsureEnvVarInAllContainers(kedaTLSCipherListEnvVar, cipherList, r.Scheme),
 	}
 }
 
@@ -362,7 +359,7 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if instance.GetDeletionTimestamp() != nil {
-		if contains(instance.GetFinalizers(), kedaControllerFinalizer) {
+		if controllerutil.ContainsFinalizer(instance, kedaControllerFinalizer) {
 			// Run finalization logic for kedaControllerFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
@@ -372,9 +369,8 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// Remove kedaControllerFinalizer. Once all finalizers have been
 			// removed, the object will be deleted.
 			patch := client.MergeFrom(instance.DeepCopy())
-			instance.SetFinalizers(remove(instance.GetFinalizers(), kedaControllerFinalizer))
-			err := r.Patch(ctx, instance, patch)
-			if err != nil {
+			controllerutil.RemoveFinalizer(instance, kedaControllerFinalizer)
+			if err := r.Patch(ctx, instance, patch); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -382,7 +378,7 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Add finalizer for this CR
-	if !contains(instance.GetFinalizers(), kedaControllerFinalizer) {
+	if !controllerutil.ContainsFinalizer(instance, kedaControllerFinalizer) {
 		if err := r.addFinalizer(ctx, logger, instance); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -1452,11 +1448,11 @@ func (r *KedaControllerReconciler) installAdmissionWebhooks(ctx context.Context,
 	}
 
 	if instance.Spec.AdmissionWebhooks.Volumes != nil {
-		transforms = append(transforms, transform.ReplaceDeploymentVolumes(instance.Spec.AdmissionWebhooks.Volumes, r.Scheme))
+		transforms = append(transforms, transform.ReplaceDeploymentVolumes(instance.Spec.Operator.Volumes, r.Scheme))
 	}
 
 	if instance.Spec.AdmissionWebhooks.VolumeMounts != nil {
-		transforms = append(transforms, transform.ReplaceDeploymentVolumeMounts(instance.Spec.AdmissionWebhooks.VolumeMounts, r.Scheme))
+		transforms = append(transforms, transform.ReplaceDeploymentVolumeMounts(instance.Spec.Operator.VolumeMounts, r.Scheme))
 	}
 
 	// add arbitrary args defined by user
