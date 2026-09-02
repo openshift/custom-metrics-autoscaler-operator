@@ -30,12 +30,12 @@ var _ = Describe("GenericDeploymentSpec Validation", func() {
 			Expect(spec.Validate()).To(Succeed())
 		})
 
-		It("Should accept zero replicas", func() {
+		It("Should reject zero replicas", func() {
 			replicas := int32(0)
 			spec := &GenericDeploymentSpec{
 				Replicas: &replicas,
 			}
-			Expect(spec.Validate()).To(Succeed())
+			Expect(spec.Validate()).ToNot(Succeed())
 		})
 
 		It("Should accept one replica", func() {

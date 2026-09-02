@@ -328,6 +328,7 @@ type HTTPAddonStatus struct {
 type GenericDeploymentSpec struct {
 	// Number of replicas for the deployment
 	// +optional
+	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
 
 	// Annotations applied to the Deployment
@@ -384,13 +385,12 @@ type GenericDeploymentSpec struct {
 }
 
 // Validate validates the GenericDeploymentSpec fields.
-// Follows cluster-resource-override-admission-operator pattern:
-// - Allows replicas: 0 (for maintenance/scaling-down)
-// - Blocks negative values (invalid)
+// - Minimum replicas: 1 (KEDA components require at least one replica to function)
+// - Blocks zero and negative values (would stop the component)
 // - Allows nil (uses base manifest default)
 func (g *GenericDeploymentSpec) Validate() error {
-	if g.Replicas != nil && *g.Replicas < 0 {
-		return fmt.Errorf("invalid value for Replicas: %d, must be >= 0", *g.Replicas)
+	if g.Replicas != nil && *g.Replicas < 1 {
+		return fmt.Errorf("invalid value for Replicas: %d, must be >= 1", *g.Replicas)
 	}
 	return nil
 }

@@ -1031,6 +1031,7 @@ spec:
                   replicas:
                     description: Number of replicas for the deployment
                     format: int32
+                    minimum: 1
                     type: integer
                   resources:
                     description: |-
@@ -4280,6 +4281,7 @@ spec:
                       replicas:
                         description: Number of replicas for the deployment
                         format: int32
+                        minimum: 1
                         type: integer
                       resources:
                         description: |-
@@ -7529,6 +7531,7 @@ spec:
                       replicas:
                         description: Number of replicas for the deployment
                         format: int32
+                        minimum: 1
                         type: integer
                       resources:
                         description: |-
@@ -10778,6 +10781,7 @@ spec:
                       replicas:
                         description: Number of replicas for the deployment
                         format: int32
+                        minimum: 1
                         type: integer
                       resources:
                         description: |-
@@ -14048,6 +14052,7 @@ spec:
                   replicas:
                     description: Number of replicas for the deployment
                     format: int32
+                    minimum: 1
                     type: integer
                   resources:
                     description: |-
@@ -17135,6 +17140,7 @@ spec:
                   replicas:
                     description: Number of replicas for the deployment
                     format: int32
+                    minimum: 1
                     type: integer
                   resources:
                     description: |-
