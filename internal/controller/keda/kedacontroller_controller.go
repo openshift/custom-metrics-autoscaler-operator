@@ -391,6 +391,46 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	status := instance.Status.DeepCopy()
 
+	// Validate Operator configuration
+	if err := instance.Spec.Operator.GenericDeploymentSpec.Validate(); err != nil {
+		logger.Error(err, "Invalid Operator configuration")
+		status.MarkInstallFailed(fmt.Sprintf("Invalid Operator configuration: %v", err))
+		if updateErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); updateErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, updateErr)
+		}
+		return ctrl.Result{}, err
+	}
+	// Operator-specific validation: max 2 replicas
+	if instance.Spec.Operator.Replicas != nil && *instance.Spec.Operator.Replicas > 2 {
+		err := fmt.Errorf("invalid value for Operator Replicas: %d, must be <= 2", *instance.Spec.Operator.Replicas)
+		logger.Error(err, "Invalid Operator configuration")
+		status.MarkInstallFailed(fmt.Sprintf("Invalid Operator configuration: %v", err))
+		if updateErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); updateErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, updateErr)
+		}
+		return ctrl.Result{}, err
+	}
+
+	// Validate MetricsServer configuration
+	if err := instance.Spec.MetricsServer.GenericDeploymentSpec.Validate(); err != nil {
+		logger.Error(err, "Invalid MetricsServer configuration")
+		status.MarkInstallFailed(fmt.Sprintf("Invalid MetricsServer configuration: %v", err))
+		if updateErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); updateErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, updateErr)
+		}
+		return ctrl.Result{}, err
+	}
+
+	// Validate AdmissionWebhooks configuration
+	if err := instance.Spec.AdmissionWebhooks.GenericDeploymentSpec.Validate(); err != nil {
+		logger.Error(err, "Invalid AdmissionWebhooks configuration")
+		status.MarkInstallFailed(fmt.Sprintf("Invalid AdmissionWebhooks configuration: %v", err))
+		if updateErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); updateErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, updateErr)
+		}
+		return ctrl.Result{}, err
+	}
+
 	if err := r.installGeneralResources(ctx, logger, instance); err != nil {
 		status.MarkInstallFailed("Not able to create ServiceAccount")
 		if statusErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); statusErr != nil {
@@ -690,6 +730,10 @@ func (r *KedaControllerReconciler) installController(ctx context.Context, logger
 
 	if instance.Spec.Operator.Resources.Limits != nil || instance.Spec.Operator.Resources.Requests != nil {
 		transforms = append(transforms, transform.ReplaceKedaOperatorResources(instance.Spec.Operator.Resources, r.Scheme))
+	}
+
+	if instance.Spec.Operator.Replicas != nil {
+		transforms = append(transforms, transform.ReplaceReplicas(instance.Spec.Operator.Replicas, r.Scheme))
 	}
 
 	if instance.Spec.Operator.Volumes != nil {
@@ -1209,6 +1253,10 @@ func (r *KedaControllerReconciler) installMetricsServer(ctx context.Context, log
 		transforms = append(transforms, transform.ReplaceMetricsServerResources(instance.Spec.MetricsServer.Resources, r.Scheme))
 	}
 
+	if instance.Spec.MetricsServer.Replicas != nil {
+		transforms = append(transforms, transform.ReplaceReplicas(instance.Spec.MetricsServer.Replicas, r.Scheme))
+	}
+
 	if !reflect.DeepEqual(instance.Spec.MetricsServer.AuditConfig, kedav1alpha1.AuditConfig{}) {
 		transforms = auditConfigTransformation(transforms, instance.Spec.MetricsServer.AuditConfig, r.Scheme, logger)
 	}
@@ -1449,6 +1497,10 @@ func (r *KedaControllerReconciler) installAdmissionWebhooks(ctx context.Context,
 
 	if instance.Spec.AdmissionWebhooks.Resources.Limits != nil || instance.Spec.AdmissionWebhooks.Resources.Requests != nil {
 		transforms = append(transforms, transform.ReplaceAdmissionWebhooksResources(instance.Spec.AdmissionWebhooks.Resources, r.Scheme))
+	}
+
+	if instance.Spec.AdmissionWebhooks.Replicas != nil {
+		transforms = append(transforms, transform.ReplaceReplicas(instance.Spec.AdmissionWebhooks.Replicas, r.Scheme))
 	}
 
 	if instance.Spec.AdmissionWebhooks.Volumes != nil {
