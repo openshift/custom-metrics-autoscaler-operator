@@ -400,6 +400,16 @@ func (r *KedaControllerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		return ctrl.Result{}, err
 	}
+	// Operator-specific validation: max 2 replicas
+	if instance.Spec.Operator.Replicas != nil && *instance.Spec.Operator.Replicas > 2 {
+		err := fmt.Errorf("invalid value for Operator Replicas: %d, must be <= 2", *instance.Spec.Operator.Replicas)
+		logger.Error(err, "Invalid Operator configuration")
+		status.MarkInstallFailed(fmt.Sprintf("Invalid Operator configuration: %v", err))
+		if updateErr := util.UpdateKedaControllerStatus(ctx, r.Client, instance, status); updateErr != nil {
+			err = fmt.Errorf("got error: %s and then another: %s", err, updateErr)
+		}
+		return ctrl.Result{}, err
+	}
 
 	// Validate MetricsServer configuration
 	if err := instance.Spec.MetricsServer.GenericDeploymentSpec.Validate(); err != nil {

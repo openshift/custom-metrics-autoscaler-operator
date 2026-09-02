@@ -46,7 +46,7 @@ var _ = Describe("GenericDeploymentSpec Validation", func() {
 			Expect(spec.Validate()).To(Succeed())
 		})
 
-		It("Should accept two replicas (maximum)", func() {
+		It("Should accept two replicas", func() {
 			replicas := int32(2)
 			spec := &GenericDeploymentSpec{
 				Replicas: &replicas,
@@ -54,20 +54,20 @@ var _ = Describe("GenericDeploymentSpec Validation", func() {
 			Expect(spec.Validate()).To(Succeed())
 		})
 
-		It("Should reject three replicas (exceeds maximum)", func() {
+		It("Should accept three replicas", func() {
 			replicas := int32(3)
 			spec := &GenericDeploymentSpec{
 				Replicas: &replicas,
 			}
-			Expect(spec.Validate()).ToNot(Succeed())
+			Expect(spec.Validate()).To(Succeed())
 		})
 
-		It("Should reject large positive replicas", func() {
+		It("Should accept large positive replicas", func() {
 			replicas := int32(100)
 			spec := &GenericDeploymentSpec{
 				Replicas: &replicas,
 			}
-			Expect(spec.Validate()).ToNot(Succeed())
+			Expect(spec.Validate()).To(Succeed())
 		})
 
 		It("Should reject negative replicas", func() {

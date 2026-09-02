@@ -386,17 +386,11 @@ type GenericDeploymentSpec struct {
 // Validate validates the GenericDeploymentSpec fields.
 // Follows cluster-resource-override-admission-operator pattern:
 // - Allows replicas: 0 (for maintenance/scaling-down)
-// - Maximum replicas: 2 (for HA deployments)
 // - Blocks negative values (invalid)
 // - Allows nil (uses base manifest default)
 func (g *GenericDeploymentSpec) Validate() error {
-	if g.Replicas != nil {
-		if *g.Replicas < 0 {
-			return fmt.Errorf("invalid value for Replicas: %d, must be >= 0", *g.Replicas)
-		}
-		if *g.Replicas > 2 {
-			return fmt.Errorf("invalid value for Replicas: %d, must be <= 2", *g.Replicas)
-		}
+	if g.Replicas != nil && *g.Replicas < 0 {
+		return fmt.Errorf("invalid value for Replicas: %d, must be >= 0", *g.Replicas)
 	}
 	return nil
 }
