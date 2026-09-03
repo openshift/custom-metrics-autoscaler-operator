@@ -57,17 +57,31 @@ echo
 echo 'Running go mod tidy (pass 1)'
 go mod tidy
 
-echo "Getting tag for keda-tools used to build KEDA version $ver"
-bttag=$(curl -s "https://raw.githubusercontent.com/kedacore/keda/v${ver}/Dockerfile" | sed -n 's#^FROM.* ghcr.io/kedacore/keda-tools:\([0-9][0-9.]*\) AS builder$#\1#p;T;q')
-
-echo "Updating keda-tools tag to $bttag"
-while read f; do
-  echo " $f"
-  sed -i "s#ghcr.io/kedacore/keda-tools:[0-9][0-9.]*#ghcr.io/kedacore/keda-tools:$bttag#g" "$f"
-done < <(git grep -l "ghcr.io/kedacore/keda-tools:[0-9]")
-
 echo "Updating resources from KEDA $ver release"
 curl -L "https://github.com/kedacore/keda/releases/download/v${ver}/keda-${ver}.yaml" | sed 's/\r//g' > resources/keda.yaml
+
+# Workaround: since KEDA 2.20.0 the bundled manifests grant the operator the
+# 'events' resource only on the events.k8s.io API group (kedacore/keda#7781).
+# client-go's event broadcaster still writes events (including leader-election
+# events) to the core ("") group as well (kubernetes/kubernetes#94857), so with
+# only events.k8s.io granted, event recording is denied (kedacore/keda#883-like).
+# Restore the core group alongside events.k8s.io until the upstream KEDA manifest
+# is fixed.
+echo "Ensuring the operator 'events' RBAC rule includes the core \"\" API group"
+awk '
+  { line[NR] = $0 }
+  END {
+    for (i = 1; i <= NR; i++) {
+      # Insert the core ("") API group before the events.k8s.io events rule,
+      # unless it is already present (idempotent).
+      if (line[i] == "  - events.k8s.io" && line[i+1] == "  resources:" && \
+          line[i+2] == "  - events" && line[i-1] != "  - \"\"") {
+        print "  - \"\""
+      }
+      print line[i]
+    }
+  }
+' resources/keda.yaml > resources/keda.yaml.tmp && mv resources/keda.yaml.tmp resources/keda.yaml
 
 echo "Finding previous release version"
 prev=$(ls keda/ | grep -v "^${ver//./\\.}$" | sort --version-sort | tail -1)
@@ -157,7 +171,11 @@ echo "Updating the kedacontrollers crd from code and copying it to $ver manifest
 make manifests
 cp config/crd/bases/keda.sh_kedacontrollers.yaml keda/${ver}/manifests/
 # revert any changes to the kustomization
-git co config/manager/kustomization.yaml
+git checkout config/manager/kustomization.yaml config/default/kustomization.yaml
+
+echo "Syncing bundle annotations to keda/${ver}/metadata/ (stripping test-only entries)"
+sed '/operators\.operatorframework\.io\.test\./d; /^[[:space:]]*#/d; /^[[:space:]]*$/d' \
+    bundle/metadata/annotations.yaml > keda/${ver}/metadata/annotations.yaml
 
 echo "Verifying that bundle-generated CSV (for testing) is equivalent to shipping CSV"
 ignorefields='createdAt|operators\.operatorframework\.io/builder|app\.kubernetes\.io/version'
