@@ -15,7 +15,7 @@ GIT_VERSION ?= $(shell git describe --always --abbrev=7)
 GIT_COMMIT  ?= $(shell git rev-list -1 HEAD)
 DATE        = $(shell date -u +"%Y.%m.%d.%H.%M.%S")
 
-GO_BUILD_VARS= GO111MODULE=on CGO_ENABLED=$(CGO) GOOS=$(TARGET_OS) GOARCH=$(ARCH)
+GO_BUILD_VARS= CGO_ENABLED=$(CGO) GOOS=$(TARGET_OS) GOARCH=$(ARCH)
 
 COSIGN_FLAGS ?= -y -a GIT_HASH=${GIT_COMMIT} -a GIT_VERSION=${VERSION} -a BUILD_DATE=${DATE}
 
@@ -34,7 +34,7 @@ BUNDLE_RUN_OPTS= --security-context-config restricted
 endif
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.35
+ENVTEST_K8S_VERSION = 1.36
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # This is a requirement for 'setup-envtest.sh' in the test target.
@@ -50,14 +50,14 @@ all: build
 
 ##@ Development
 
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) crd:crdVersions=v1 rbac:roleName=keda-olm-operator webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
-fmt: ## Run go fmt against code.
-	go fmt ./...
+fmt: golangci-lint ## Run golangci-lint fmt against code.
+	$(GOLANGCI_LINT) fmt
 
 vet: ## Run go vet against code.
 	go vet ./...
@@ -77,17 +77,17 @@ bin/json2yaml: cmd/testutil/json2yaml/json2yaml.go
 	mkdir -p bin
 	go build $(GOGCFLAGS) -ldflags "$(LD_FLAGS)" -o bin/ "github.com/kedacore/keda-olm-operator/cmd/testutil/json2yaml"
 
-test-audit: manifests generate fmt vet envtest
+test-audit: manifests generate fmt vet
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing audit flags"
 
-test-functionality: manifests generate fmt vet envtest ## Test functionality.
+test-functionality: manifests generate ## Test functionality.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type functionality -ginkgo.focus "Testing functionality"
 
-test-deployment: manifests generate fmt vet envtest ## Test OLM deployment.
+test-deployment: manifests generate ## Test OLM deployment.
 	kubectl create namespace olm --dry-run=client -o yaml | kubectl apply --server-side -f -
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type deployment -ginkgo.focus "Deploying KedaController manifest"
 
-test: manifests generate fmt vet envtest
+test: manifests generate
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -v -ginkgo.v -coverprofile cover.out -test.type unit
 
 .PHONY: e2e-test
@@ -96,7 +96,7 @@ e2e-test: ## Run e2e smoke tests against existing cluster.
 
 .PHONY: e2e-test-ci
 e2e-test-ci: ## Run e2e smoke tests (CI mode with GitHub Actions output).
-	go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --rerun-fails=2 --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaControllerLifecycle
+	go tool gotestsum --rerun-fails=2 --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaControllerLifecycle
 
 .PHONY: e2e-upgrade-test-pre
 e2e-upgrade-test-pre: ## Run pre-upgrade e2e test: deploy workloads under the previous KEDA version.
@@ -104,7 +104,7 @@ e2e-upgrade-test-pre: ## Run pre-upgrade e2e test: deploy workloads under the pr
 
 .PHONY: e2e-upgrade-test-pre-ci
 e2e-upgrade-test-pre-ci: ## Run pre-upgrade e2e test (CI mode).
-	go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaUpgradeSetup
+	go tool gotestsum --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaUpgradeSetup
 
 .PHONY: e2e-upgrade-test-post
 e2e-upgrade-test-post: ## Run post-upgrade e2e test: verify workloads survived the upgrade.
@@ -112,7 +112,7 @@ e2e-upgrade-test-post: ## Run post-upgrade e2e test: verify workloads survived t
 
 .PHONY: e2e-upgrade-test-post-ci
 e2e-upgrade-test-post-ci: ## Run post-upgrade e2e test (CI mode).
-	go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaUpgradeVerify
+	go tool gotestsum --format=github-actions --packages="./test/e2e/..." -- -tags=e2e -count=1 -timeout=10m -run=TestKedaUpgradeVerify
 
 .PHONY: e2e-olm-setup
 e2e-olm-setup: build bundle docker-build docker-push bundle-build bundle-push ## Deploy operator via OLM for e2e testing.
@@ -168,12 +168,12 @@ e2e-olm-cleanup: operator-sdk ## Clean up OLM-deployed operator.
 
 ##@ Build
 
-build: generate fmt vet ## Build manager binary.
+build: generate ## Build manager binary.
 	${GO_BUILD_VARS} go build \
 	-ldflags "-X=github.com/kedacore/keda-olm-operator/version.GitCommit=$(GIT_COMMIT) -X=github.com/kedacore/keda-olm-operator/version.Version=$(VERSION)" \
 	-o bin/manager cmd/main.go
 
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate ## Run a controller from your host.
 	WATCH_NAMESPACE="keda" go run ./cmd/main.go
 
 docker-build: ## Build docker image with the manager.
@@ -185,9 +185,7 @@ docker-push: ## Push docker image with the manager.
 publish: docker-build docker-push ## Build & push docker image with the manager.
 
 sign-images: ## Sign KEDA images published on GitHub Container Registry
-	COSIGN_EXPERIMENTAL=1 cosign sign ${COSIGN_FLAGS} $(IMAGE_CONTROLLER)
-
-##@ E2E Testing
+	cosign sign ${COSIGN_FLAGS} $(IMAGE_CONTROLLER)
 
 # e2e-cma-setup is called by CI after the CMA operator is installed via OLM
 # (operator-sdk run bundle). It creates the KedaController CR that instructs
@@ -226,13 +224,13 @@ e2e-cma-setup: ## Set up KEDA + HTTP Add-on for CMA e2e tests (called by CI afte
 
 ##@ Deployment
 
-install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+install: manifests ## Install CRDs into the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | kubectl apply --server-side -f -
 
-uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
+uninstall: manifests ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+deploy: manifests ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && \
 	$(KUSTOMIZE) edit set image ghcr.io/kedacore/keda-olm-operator=${IMAGE_CONTROLLER}
 	cd config/default && \
@@ -248,36 +246,17 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 ## Tool Binaries
-KUSTOMIZE ?= $(LOCALBIN)/kustomize
-CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
-ENVTEST ?= $(LOCALBIN)/setup-envtest
+KUSTOMIZE ?= go tool kustomize
+CONTROLLER_GEN ?= go tool controller-gen
+ENVTEST ?= go tool setup-envtest
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.3.0
 # renovate: datasource=github-releases depName=operator-framework/operator-sdk
 OPERATOR_SDK_VERSION ?= v1.38.0
-# renovate: datasource=go depName=gotest.tools/gotestsum
-GOTESTSUM_VERSION ?= v1.13.0
-
-.PHONY: controller-gen
-controller-gen: $(CONTROLLER_GEN) ## Install controller-gen from vendor dir if necessary.
-$(CONTROLLER_GEN): $(LOCALBIN)
-	test -s $(LOCALBIN)/controller-gen || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen
-
-.PHONY: kustomize
-kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
-$(KUSTOMIZE): $(LOCALBIN)
-	@if test -x $(LOCALBIN)/kustomize && ! $(LOCALBIN)/kustomize version | grep -q $(KUSTOMIZE_VERSION); then \
-	    echo "$(LOCALBIN)/kustomize version is not expected $(KUSTOMIZE_VERSION). Removing it before installing."; \
-	    rm -rf $(LOCALBIN)/kustomize; \
-	fi
-	test -s $(LOCALBIN)/kustomize || GOBIN=$(LOCALBIN) GO111MODULE=on go install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
-
-.PHONY: envtest
-envtest: $(ENVTEST) ## Install envtest-setup from vendor dir if necessary.
-$(ENVTEST): $(LOCALBIN)
-	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest
+# renovate: datasource=github-releases depName=golangci/golangci-lint
+GOLANGCI_LINT_VERSION ?= v2.12.2
 
 .PHONY: operator-sdk
 operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk locally if necessary.
@@ -290,10 +269,23 @@ $(OPERATOR_SDK): $(LOCALBIN)
 	    { curl -sSLo $(LOCALBIN)/operator-sdk https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$$(go env GOOS)_$$(go env GOARCH) && \
 	    chmod +x $(LOCALBIN)/operator-sdk; }
 
-# Run golangci against code
-.PHONY: golangci
-golangci:	## Run golangci against code.
-	golangci-lint run
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+$(GOLANGCI_LINT): $(LOCALBIN)
+	@if test -x $(LOCALBIN)/golangci-lint && ! $(LOCALBIN)/golangci-lint version | grep -q $(patsubst v%,%,$(GOLANGCI_LINT_VERSION)); then \
+	    echo "$(LOCALBIN)/golangci-lint version is not expected $(GOLANGCI_LINT_VERSION). Removing it before downloading."; \
+	    rm -rf $(LOCALBIN)/golangci-lint; \
+	fi
+	test -s $(LOCALBIN)/golangci-lint || \
+	    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+
+.PHONY: lint
+lint: golangci-lint ## Run golangci-lint against code.
+	$(GOLANGCI_LINT) run
+
+.PHONY: lint-fix
+lint-fix: golangci-lint ## Run golangci-lint against code and fix issues.
+	$(GOLANGCI_LINT) run --fix
 
 ##@ OLM Bundle
 
@@ -314,16 +306,16 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # Generate bundle manifests and metadata, then validate generated files.
 .PHONY: bundle
-bundle: manifests kustomize	## Generate bundle manifests and metadata, then validate generated files.
+bundle: manifests operator-sdk	## Generate bundle manifests and metadata, then validate generated files.
 # edit image in config for current changes made to this Makefile so the deployed image is
 # the one that is being built & pushed (in case its no ghcr.io/kedacore)
 	cd config/manager && \
 		$(KUSTOMIZE) edit set image ghcr.io/kedacore/keda-olm-operator=${IMAGE_CONTROLLER}
 	cd config/default && \
   	$(KUSTOMIZE) edit add label --without-selector --include-templates -f app.kubernetes.io/version:${VERSION}
-	operator-sdk generate kustomize manifests -q
-	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite $(BUNDLE_METADATA_OPTS)
-	operator-sdk bundle validate ./bundle
+	$(OPERATOR_SDK) generate kustomize manifests -q
+	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle -q --overwrite $(BUNDLE_METADATA_OPTS)
+	$(OPERATOR_SDK) bundle validate ./bundle
 
 # Build the bundle image.
 .PHONY: bundle-build	## Build the bundle image.
@@ -333,7 +325,7 @@ bundle-build:
 .PHONY: bundle-push
 bundle-push:
 	docker push ${BUNDLE}
-	operator-sdk bundle validate ${BUNDLE}
+	$(OPERATOR_SDK) bundle validate ${BUNDLE}
 
 .PHONY: index-build
 index-build:
@@ -350,7 +342,7 @@ index-push:
 .PHONY: deploy-olm	## Deploy bundle. -- build & bundle to update if changes were made to code
 deploy-olm: build bundle docker-build docker-push bundle-build bundle-push index-build index-push
 	kubectl create namespace keda --dry-run=client -o yaml | kubectl apply --server-side -f -
-	operator-sdk run bundle ${BUNDLE} --namespace keda $(BUNDLE_RUN_OPTS)
+	$(OPERATOR_SDK) run bundle ${BUNDLE} --namespace keda $(BUNDLE_RUN_OPTS)
 
 .PHONY: deploy-olm-testing
 deploy-olm-testing:

@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 )
 
@@ -208,10 +209,6 @@ type HTTPAddonOperatorSpec struct {
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
 
-	// Extra environment variables passed to the HTTP Add-on Operator container
-	// +optional
-	Env []corev1.EnvVar `json:"env,omitempty"`
-
 	GenericDeploymentSpec `json:",inline"`
 }
 
@@ -243,10 +240,6 @@ type HTTPAddonInterceptorSpec struct {
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
 
-	// Extra environment variables passed to the HTTP Add-on Interceptor container
-	// +optional
-	Env []corev1.EnvVar `json:"env,omitempty"`
-
 	GenericDeploymentSpec `json:",inline"`
 }
 
@@ -277,10 +270,6 @@ type HTTPAddonScalerSpec struct {
 	// Number of replicas for the HTTP Add-on Scaler deployment
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
-
-	// Extra environment variables passed to the HTTP Add-on Scaler container
-	// +optional
-	Env []corev1.EnvVar `json:"env,omitempty"`
 
 	GenericDeploymentSpec `json:",inline"`
 }
@@ -377,6 +366,12 @@ type GenericDeploymentSpec struct {
 	Volumes []corev1.Volume `json:"volumes,omitempty"`
 	// +optional
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+
+	// Environment variables set on the component's container, overriding any
+	// variable of the same name that the operator sets itself
+	// https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
 }
 
 // KedaControllerStatus defines the observed state of KedaController
@@ -421,7 +416,13 @@ type KedaControllerList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&KedaController{}, &KedaControllerList{})
+	SchemeBuilder.Register(addKnownTypes)
+}
+
+func addKnownTypes(s *runtime.Scheme) error {
+	s.AddKnownTypes(GroupVersion, &KedaController{}, &KedaControllerList{})
+	metav1.AddToGroupVersion(s, GroupVersion)
+	return nil
 }
 
 func (kcs *KedaControllerStatus) SetPhase(p KedaControllerPhase) {
