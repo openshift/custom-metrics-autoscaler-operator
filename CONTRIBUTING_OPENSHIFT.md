@@ -243,7 +243,7 @@ Always commit generated file changes in the same PR as the source changes, and p
 | Run functionality tests (envtest) | `make test-functionality` |
 | Run OLM deployment tests | `make test-deployment` |
 | Run audit-flag tests | `make test-audit` |
-| Run linters | `make golangci` |
+| Run linters | `make lint` |
 | Format code | `make fmt` |
 | Run go vet | `make vet` |
 | Generate deepcopy code | `make generate` |
@@ -259,9 +259,8 @@ Always commit generated file changes in the same PR as the source changes, and p
 | Tear down the OLM install | `make e2e-olm-cleanup` |
 | List all targets | `make help` |
 
-There is no `make lint` target in this repo — the linter target is `make golangci`,
-and it expects `golangci-lint` to already be installed. There is also no `make verify`
-target; check for generated-file drift with `git diff --exit-code` as shown below.
+The linter target is `make lint`, and it downloads `golangci-lint` when needed. There is also no
+`make verify` target; check for generated-file drift with `git diff --exit-code` as shown below.
 
 `golangci-lint` and `pre-commit` are the two tools worth installing locally. The
 `pre-commit` hooks (`pre-commit install`) run `go fmt`, `golangci-lint`, a
@@ -273,7 +272,7 @@ Before requesting review:
 
 1. `make build` — verify the code compiles
 2. `make test` — run unit tests
-3. `make golangci` — run linters
+3. `make lint` — run linters
 4. `make manifests generate && git diff --exit-code` — ensure generated files are up to date
 5. `make cma-check-all-csv` — ensure the CMA CSVs have not drifted (required if you touched the CSV or `hack/cma-generate-csv.sh`)
 6. Confirm every commit has an `UPSTREAM:` prefix and the PR title has a Jira prefix
@@ -282,7 +281,7 @@ Before requesting review:
 
 ## Code Style
 
-- Run `make fmt` before committing, and `make golangci` to catch the rest. The configuration lives in [`.golangci.yml`](.golangci.yml).
+- Run `make fmt` before committing, and `make lint` to catch the rest. The configuration lives in [`.golangci.yml`](.golangci.yml).
 - Import ordering is enforced by `gci`: standard library, then external packages, then `github.com/kedacore/keda-olm-operator` (separated by blank lines).
 - Follow Go conventions for error strings: lowercase, no trailing punctuation, wrapped with `fmt.Errorf("context: %w", err)`.
 - Use structured logging via `logr`: constant messages with key-value pairs in lowerCamelCase, rather than formatted strings.

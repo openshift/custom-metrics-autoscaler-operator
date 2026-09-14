@@ -33,8 +33,30 @@ fi
 
 # Post-process the manifest to fix labels
 echo "Fixing labels in manifest..."
-sed -i '/app\.kubernetes\.io\/managed-by: kustomize/d' "$tmpfile"
-sed -i "s/app\.kubernetes\.io\/version: HEAD/app.kubernetes.io\/version: ${ver}/" "$tmpfile"
+python3 -c "
+import re, sys
+ver, path = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    content = f.read()
+content = content.replace('app.kubernetes.io/managed-by: kustomize\n', '')
+content = content.replace('app.kubernetes.io/version: HEAD', 'app.kubernetes.io/version: ' + ver)
+
+# Fix deployment selector labels: upstream misuses app.kubernetes.io/instance as a
+# component differentiator and sets component to the non-differentiating 'add-on'.
+# See https://github.com/kedacore/http-add-on/issues/1462
+# TODO: remove after release of HTTP Addon 1.0.0
+content = re.sub(
+    r'( +)app\.kubernetes\.io/component: add-on\n'
+    r'\s+app\.kubernetes\.io/instance: (\S+)\n'
+    r'\s+app\.kubernetes\.io/name: http\n'
+    r'\s+app\.kubernetes\.io/part-of: keda',
+    r'\1app.kubernetes.io/name: http-add-on\n\1app.kubernetes.io/component: \2',
+    content,
+)
+
+with open(path, 'w') as f:
+    f.write(content)
+" "$ver" "$tmpfile"
 
 # Extract all CRDs from the manifest using a generic loop (same approach as relprep.sh)
 echo ""
@@ -70,6 +92,22 @@ else
     echo "  Copying to http-add-on/${ver}/manifests/"
     cp "${crd_file}" "http-add-on/${ver}/manifests/"
   done
+
+  # Sync CRDs to the latest KEDA bundle directory so they don't go stale
+  keda_latest=$(ls keda/ | sort --version-sort | tail -1)
+  if [ -n "$keda_latest" ] && [ -d "keda/${keda_latest}/manifests" ]; then
+    echo ""
+    echo "Syncing HTTP Add-on CRDs to keda/${keda_latest}/manifests/..."
+    for i in $crds; do
+      pluralname="${i%%.*}"
+      crdns="${i#*.}"
+      crd_file="config/crd/bases/${crdns}_${pluralname}.yaml"
+      if [ -s "${crd_file}" ]; then
+        echo "  Copying ${crd_file} -> keda/${keda_latest}/manifests/"
+        cp "${crd_file}" "keda/${keda_latest}/manifests/"
+      fi
+    done
+  fi
 fi
 
 # Strip CRDs and Namespace documents from the runtime manifest
@@ -79,7 +117,7 @@ python3 -c "
 import re, sys
 with open(sys.argv[1]) as f:
     content = f.read()
-docs = re.split(r'\n---\n', content)
+docs = re.split(r'^---$', content, flags=re.M)
 kept = []
 for doc in docs:
     stripped = doc.strip()
@@ -89,8 +127,8 @@ for doc in docs:
         continue
     if re.search(r'^kind:\s*Namespace', stripped, re.M):
         continue
-    kept.append(doc)
-result = '\n---\n'.join(kept)
+    kept.append(stripped)
+result = '\n---\n'.join(kept) + '\n'
 with open(sys.argv[2], 'w') as f:
     f.write(result)
 " "$tmpfile" resources/keda-http-addon.yaml
@@ -103,7 +141,7 @@ echo "Verifying manifest contents..."
 components=("interceptor" "operator" "scaler")
 for component in "${components[@]}"; do
   if grep -q "http-add-on-${component}" resources/keda-http-addon.yaml; then
-    img_ver=$(grep -oP "ghcr.io/kedacore/http-add-on-${component}:\K[0-9]+\.[0-9]+\.[0-9]+" resources/keda-http-addon.yaml | head -1)
+    img_ver=$(grep -oE "ghcr.io/kedacore/http-add-on-${component}:[0-9]+\.[0-9]+\.[0-9]+" resources/keda-http-addon.yaml | head -1 | cut -d: -f2)
     echo "  OK: ${component} component found (image version: ${img_ver})"
   else
     echo "  MISSING: ${component} component NOT found - manifest may be incomplete"
@@ -120,10 +158,14 @@ for i in $crds; do
   crdns="${i#*.}"
   crd_file="config/crd/bases/${crdns}_${pluralname}.yaml"
   [ -s "${crd_file}" ] && echo "  - ${crd_file}"
+  [ -s "${crd_file}" ] && echo "  - http-add-on/${ver}/manifests/${crdns}_${pluralname}.yaml"
+  if [ -n "$keda_latest" ] && [ -d "keda/${keda_latest}/manifests" ]; then
+    [ -s "${crd_file}" ] && echo "  - keda/${keda_latest}/manifests/${crdns}_${pluralname}.yaml"
+  fi
 done
 echo ""
 echo "Next steps:"
-echo "  1. Review the changes: git diff resources/ config/crd/"
+echo "  1. Review the changes: git diff resources/ config/crd/ keda/"
 echo "  2. Run 'make manifests' to regenerate controller manifests"
 echo "  3. Test the changes with a KedaController that has httpAddon.enabled: true"
 echo "  4. Commit the changes when validated"
