@@ -22,7 +22,7 @@ package v1alpha1
 
 import (
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 )
 
