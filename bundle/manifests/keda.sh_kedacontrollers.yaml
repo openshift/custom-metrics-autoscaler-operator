@@ -1031,6 +1031,11 @@ spec:
                       Pod priority
                       https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                     type: string
+                  replicas:
+                    description: Number of replicas for the deployment
+                    format: int32
+                    minimum: 0
+                    type: integer
                   resources:
                     description: |-
                       Manage resource requests & limits
@@ -3109,6 +3114,9 @@ spec:
                       type: object
                     type: array
                 type: object
+                x-kubernetes-validations:
+                - message: admissionWebhooks replicas must be >= 1
+                  rule: '!has(self.replicas) || self.replicas >= 1'
               httpAddon:
                 description: HTTPAddonSpec defines configuration for the KEDA HTTP
                   Add-on.
@@ -4277,9 +4285,9 @@ spec:
                           https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                         type: string
                       replicas:
-                        description: Number of replicas for the HTTP Add-on Interceptor
-                          deployment
+                        description: Number of replicas for the deployment
                         format: int32
+                        minimum: 0
                         type: integer
                       resources:
                         description: |-
@@ -7527,9 +7535,9 @@ spec:
                           https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                         type: string
                       replicas:
-                        description: Number of replicas for the HTTP Add-on Operator
-                          deployment
+                        description: Number of replicas for the deployment
                         format: int32
+                        minimum: 0
                         type: integer
                       resources:
                         description: |-
@@ -10777,9 +10785,9 @@ spec:
                           https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                         type: string
                       replicas:
-                        description: Number of replicas for the HTTP Add-on Scaler
-                          deployment
+                        description: Number of replicas for the deployment
                         format: int32
+                        minimum: 0
                         type: integer
                       resources:
                         description: |-
@@ -14047,6 +14055,11 @@ spec:
                       Pod priority
                       https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                     type: string
+                  replicas:
+                    description: Number of replicas for the deployment
+                    format: int32
+                    minimum: 0
+                    type: integer
                   resources:
                     description: |-
                       Manage resource requests & limits
@@ -16125,6 +16138,9 @@ spec:
                       type: object
                     type: array
                 type: object
+                x-kubernetes-validations:
+                - message: metricsServer replicas must be >= 1
+                  rule: '!has(self.replicas) || self.replicas >= 1'
               operator:
                 properties:
                   affinity:
@@ -17130,6 +17146,11 @@ spec:
                       Pod priority
                       https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
                     type: string
+                  replicas:
+                    description: Number of replicas for the deployment
+                    format: int32
+                    minimum: 0
+                    type: integer
                   resources:
                     description: |-
                       Manage resource requests & limits
@@ -19208,6 +19229,9 @@ spec:
                       type: object
                     type: array
                 type: object
+                x-kubernetes-validations:
+                - message: operator replicas must be >= 1
+                  rule: '!has(self.replicas) || self.replicas >= 1'
               serviceAccount:
                 properties:
                   annotations:
