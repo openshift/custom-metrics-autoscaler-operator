@@ -1,8 +1,0 @@
-approvers:
-  - Fedosin
-  - joelsmith
-  - linkvt
-  - maxcao13
-
-# Bugzilla fields:
-component: Pod Autoscaler
