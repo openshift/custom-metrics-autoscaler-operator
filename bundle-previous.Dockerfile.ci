@@ -1,7 +1,6 @@
-# This builds the bundle for the SECOND most recent release under keda/. It is
-# used by the cma-e2e-upgrade-* CI jobs as the upgrade starting point: it shares
-# the same OLM package with the bundle built by bundle.Dockerfile.ci, and its
-# CSV is the one the most recent release's CSV replaces, so that
+# This builds the bundle for the most recent shipped release under keda/. It is
+# used by the cma-e2e-upgrade-* CI jobs as the upgrade starting point: its CSV
+# is the one the most recent release's CSV replaces, so that
 # 'operator-sdk run bundle-upgrade' has a valid upgrade edge.
 
 FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.26-openshift-5.0 as builder
@@ -10,10 +9,11 @@ FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.26-openshift-5.0 as b
 COPY . . 
 
 
-# bundle off our second most recent release 
-RUN VERSION=$(ls keda/ | sort -V  | tail -2 | head -1) && \ 
-  mv keda/$VERSION/manifests /manifests && \ 
-  mv keda/$VERSION/metadata  /metadata 
+# 2.20.1 was never shipped, so pin the previous bundle to 2.19.0, the last
+# released version.
+RUN VERSION=2.19.0 && \
+  mv keda/$VERSION/manifests /manifests && \
+  mv keda/$VERSION/metadata  /metadata
        
 # if there are two csvs, the bundle will not validate, so delete the upstream one now that we're done using it
 RUN rm /manifests/keda.*.clusterserviceversion.yaml
